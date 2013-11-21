@@ -1,3 +1,6 @@
 [submodule "tengine"]
 	path = tengine
 	url = https://github.com/alibaba/tengine.git
+[submodule "lua-nginx-module"]
+	path = lua-nginx-module
+	url = https://github.com/chaoslawful/lua-nginx-module.git
