@@ -7,3 +7,6 @@
 [submodule "gperftools"]
 	path = gperftools
 	url = https://code.google.com/p/gperftools/
+[submodule "ngx_http_enhanced_memcached_module"]
+	path = ngx_http_enhanced_memcached_module
+	url = https://github.com/bpaquet/ngx_http_enhanced_memcached_module.git
