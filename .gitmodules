@@ -10,3 +10,6 @@
 [submodule "ngx_http_enhanced_memcached_module"]
 	path = ngx_http_enhanced_memcached_module
 	url = https://github.com/bpaquet/ngx_http_enhanced_memcached_module.git
+[submodule "srcache-nginx-module"]
+	path = srcache-nginx-module
+	url = https://github.com/agentzh/srcache-nginx-module.git
