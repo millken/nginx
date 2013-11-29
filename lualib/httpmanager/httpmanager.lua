@@ -59,6 +59,7 @@ function ctx(self)
             current_state = "",
             client_validators = {},
             response = {status = nil, body = "", header = {}},
+            cache = {},
         }
         ngx.ctx[id] = ctx
     end
@@ -315,6 +316,9 @@ states = {
             return self:e "response_fetched"
         end
     end,
+    checking_can_fetch = function(self)
+        ngx.exit(451)
+    end,    
     updating_cache = function(self)
         if ngx.req.get_method() ~= "HEAD" then
             local res = self:get_response()
@@ -692,11 +696,10 @@ function add_cache_rule(self, rule)
 end
 
 function run(self)
-	ngx.log(ngx.DEBUG, "httpcache run")
+	ngx.log(ngx.DEBUG, "httpcache run :".. ngx.var.uri)
 	local rules = self:ctx().rules or 0
 	if #rules == 0 then
-		--ngx.var.uri = self:config_get("origin_location")..ngx.var.uri
-		ngx.exit(404)
+		ngx.exit(451)
 	end
     self:e "init"
 end
@@ -710,12 +713,29 @@ function full_uri()
     return ngx.var.scheme .. '://' .. ngx.var.host .. relative_uri()
 end
 
+function is_static_cache(self)
+    local status = false
+    for _,r in ipairs(self:ctx().rules) do
+        if r["file_ext"] and h_util.header_has_directive(ngx.var.uri, h_util.get_file_ext(ngx.var.uri)) then
+            if r["static"] and r["static"] == true then status = true end
+            self:ctx().cache = {static=r["static"] or false,time=r["time"] or 0}
+        end
+        ngx.log(ngx.DEBUG, cjson.encode(r) ..cjson.encode(self:ctx().cache) .. h_util.get_file_ext(ngx.var.uri))
+    end
+    return status
+end
+
 function request_accepts_cache(self)
+    -- check static cache
+    if self:is_static_cache() then
+        return true
+    end
     -- Check for no-cache
     local h = ngx.req.get_headers()
     if h_util.header_has_directive(h["Pragma"], "no-cache")
        or h_util.header_has_directive(h["Cache-Control"], "no-cache")
-       or h_util.header_has_directive(h["Cache-Control"], "no-store") then
+       or h_util.header_has_directive(h["Cache-Control"], "no-store")
+       or h_util.header_has_directive(h["X-Requested-With"], "XMLHttpRequest") then
         return false
     end
 

@@ -17,6 +17,9 @@ function header_has_directive(header, directive)
     return false
 end
 
+function get_file_ext(uri)
+    return uri:match(".+%.(%w+)$") or "none"
+end
 
 function get_header_token(header, directive)
     if header_has_directive(header, directive) then
