@@ -54,7 +54,7 @@ function get_system_basic_info()
 	/sbin/hwclock -w
 }
 
-#get_system_basic_info
+get_system_basic_info
 
 
 cur_dir=`pwd`
