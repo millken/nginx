@@ -90,6 +90,7 @@ end
 function set_response(self, res, name)
     local name = name or "response"
     self:ctx()[name] = res
+    ngx.log(ngx.DEBUG, cjson.encode(res))
 end
 
 
@@ -143,9 +144,9 @@ actions = {
     end,  
     fetch = function(self)
         local res = self:fetch_from_origin()
-        if res.status ~= ngx.HTTP_NOT_MODIFIED then
+        --if res.status ~= ngx.HTTP_NOT_MODIFIED then
             self:set_response(res)
-        end
+        --end
     end,       
     remove_client_validators = function(self)
         -- Keep these in case we need to restore them (after revalidating upstream)
@@ -496,6 +497,8 @@ function fetch_from_origin(self)
     end
     res.body = origin.body
 
+    --ngx.log(ngx.DEBUG, cjson.encode(origin))
+
     if res.status < 500 then
         -- http://www.w3.org/Protocols/rfc2616/rfc2616-sec14.html#sec14.18
         -- A received message that does not have a Date header field MUST be assigned
@@ -595,7 +598,8 @@ function save_to_cache(self, res)
         unpack(h)
     )
 
-    redis:expire(cache_key(self), ttl + tonumber(self:config_get("keep_cache_for")))
+    --ngx.log(ngx.DEBUG, "cache time:" .. self:ctx().cache.time)
+    redis:expire(cache_key(self), ttl)
 
     -- Add this to the uris_by_expiry sorted set, for cache priming and analysis
     redis:zadd('ledge:uris_by_expiry', expires, uri)
@@ -713,14 +717,30 @@ function full_uri()
     return ngx.var.scheme .. '://' .. ngx.var.host .. relative_uri()
 end
 
+--check request is static cache
 function is_static_cache(self)
     local status = false
     for _,r in ipairs(self:ctx().rules) do
-        if r["file_ext"] and h_util.header_has_directive(ngx.var.uri, h_util.get_file_ext(ngx.var.uri)) then
-            if r["static"] and r["static"] == true then status = true end
-            self:ctx().cache = {static=r["static"] or false,time=r["time"] or 0}
+        --match url
+        if r["url"] then
+            if r["regex"] and r["regex"] == true then
+            elseif h_util.header_has_directive(ngx.var.uri, r["url"]) then
+                if r["static"] and r["static"] == true then status = true end
+                if r["none_cache"] and r["none_cache"] == true then status = false end
+                self:ctx().cache = {static=r["static"] or false,time=r["time"] or 0}                
+            end
         end
-        ngx.log(ngx.DEBUG, cjson.encode(r) ..cjson.encode(self:ctx().cache) .. h_util.get_file_ext(ngx.var.uri))
+        --match file extension
+        if r["file_ext"] and h_util.header_has_directive(ngx.var.uri, h_util.get_file_ext(ngx.var.uri)) then
+            if r["none_cache"] and r["none_cache"] == true then
+                status = false
+            else
+                if r["static"] and r["static"] == true then status = true end
+                self:ctx().cache = {static=r["static"] or false,time=r["time"] or 3600}
+                ngx.log(ngx.DEBUG, cjson.encode(self:ctx().cache))                
+            end
+        end
+        ngx.log(ngx.DEBUG, cjson.encode(r) ..cjson.encode(self:ctx().cache) .. ngx.var.uri)
     end
     return status
 end
@@ -850,7 +870,7 @@ end
 function serve(self)
     if not ngx.headers_sent then
         local res = self:get_response() -- or self:get_response("fetched")
-        assert(res.status, "Response has no status.")
+        --assert(res.status, "Response has no status.")
 
         local visible_hostname = visible_hostname()
 
