@@ -599,10 +599,10 @@ function save_to_cache(self, res)
     )
 
     --ngx.log(ngx.DEBUG, "cache time:" .. self:ctx().cache.time)
-    redis:expire(cache_key(self), ttl)
+    redis:expire(cache_key(self), self:ctx().cache.time or 300)
 
     -- Add this to the uris_by_expiry sorted set, for cache priming and analysis
-    redis:zadd('ledge:uris_by_expiry', expires, uri)
+    --redis:zadd('ledge:uris_by_expiry', expires, uri)
 
     -- Run transaction
     if redis:exec() == ngx.null then
@@ -705,6 +705,11 @@ function run(self)
 	if #rules == 0 then
 		ngx.exit(451)
 	end
+     if ngx.req.get_method() ~= "GET" and ngx.req.get_method() ~= "POST" then
+        ngx.status = 405
+        ngx.say("only get or post")
+        ngx.exit(405)
+    end
     self:e "init"
 end
 
@@ -718,37 +723,37 @@ function full_uri()
 end
 
 --check request is static cache
-function is_static_cache(self)
-    local status = false
+function _cache_rule(self)
+    local status = nil
     for _,r in ipairs(self:ctx().rules) do
         --match url
         if r["url"] then
             if r["regex"] and r["regex"] == true then
             elseif h_util.header_has_directive(ngx.var.uri, r["url"]) then
                 if r["static"] and r["static"] == true then status = true end
-                if r["none_cache"] and r["none_cache"] == true then status = false end
+                if r["nocache"] and r["nocache"] == true then status = true end
                 self:ctx().cache = {static=r["static"] or false,time=r["time"] or 0}                
             end
         end
         --match file extension
-        if r["file_ext"] and h_util.header_has_directive(ngx.var.uri, h_util.get_file_ext(ngx.var.uri)) then
-            if r["none_cache"] and r["none_cache"] == true then
+        if r["file_ext"] and h_util.header_has_directive(r["file_ext"], h_util.get_file_ext(ngx.var.uri)) then
+            if r["nocache"] and r["nocache"] == true then
                 status = false
             else
                 if r["static"] and r["static"] == true then status = true end
-                self:ctx().cache = {static=r["static"] or false,time=r["time"] or 3600}
-                ngx.log(ngx.DEBUG, cjson.encode(self:ctx().cache))                
+                self:ctx().cache = {static=r["static"] or false,time=r["time"] or 3600}            
             end
         end
-        ngx.log(ngx.DEBUG, cjson.encode(r) ..cjson.encode(self:ctx().cache) .. ngx.var.uri)
     end
     return status
 end
 
 function request_accepts_cache(self)
     -- check static cache
-    if self:is_static_cache() then
-        return true
+    local cache = self:_cache_rule()
+    if cache ~= nil then
+        --ngx.log(ngx.DEBUG, "static cahce :------!!!!" .. ngx.var.uri .. cjson.encode(self:ctx().cache))
+        return cache
     end
     -- Check for no-cache
     local h = ngx.req.get_headers()
