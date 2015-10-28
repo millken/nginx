@@ -10,11 +10,12 @@ local tonumber = tonumber
 local type = type
 local next = next
 local table = table
+local math = math
 local ngx = ngx
 local cjson = require('cjson')
 module(...)
 
-_VERSION = '0.01'
+_VERSION = '0.02'
 
 local mt = { __index = _M }
 
@@ -35,7 +36,7 @@ function new(self)
         redis_use_sentinel = false,
         redis_sentinels = {},
 
-        keep_cache_for  = 86400 * 30,   -- Max time to Keep cache items past expiry + stale (sec)
+        keep_cache_for  = 86400,        -- Max time to Keep cache items past expiry + stale (sec)
         max_stale       = nil,          -- Warning: Violates HTTP spec
         stale_if_error  = nil,          -- Max staleness (sec) for a cached response on upstream error
         enable_collapsed_forwarding = false,
@@ -90,7 +91,6 @@ end
 function set_response(self, res, name)
     local name = name or "response"
     self:ctx()[name] = res
-    ngx.log(ngx.DEBUG, cjson.encode(res))
 end
 
 
@@ -127,8 +127,7 @@ actions = {
         return self:redis_close()
     end,    
     set_http_service_unavailable = function(self)
-        ngx.status = ngx.HTTP_SERVICE_UNAVAILABLE
-        ngx.say("server is busy")
+        ngx.status = 451
     end,    
     set_http_status_from_response = function(self)
         local res = self:get_response()
@@ -455,15 +454,15 @@ end
 function cache_key(self)
     if not self:ctx().cache_key then
         -- Generate the cache key. The default spec is:
-        -- ledge:cache_obj:http:example.com:/about:p=3&q=searchterms
+        -- httpmanager:cache:http:example.com:/about:p=3&q=searchterms
         local key_spec = self:config_get("cache_key_spec") or {
             ngx.var.scheme,
             ngx.var.host,
             ngx.var.uri,
             ngx.var.args,
         }
-        table.insert(key_spec, 1, "cache_obj")
-        table.insert(key_spec, 1, "ledge")
+        table.insert(key_spec, 1, "cache")
+        table.insert(key_spec, 1, "httpmanager")
         self:ctx().cache_key = table.concat(key_spec, ":")
     end
     return self:ctx().cache_key
@@ -599,7 +598,7 @@ function save_to_cache(self, res)
     )
 
     --ngx.log(ngx.DEBUG, "cache time:" .. self:ctx().cache.time)
-    redis:expire(cache_key(self), self:ctx().cache.time or 300)
+    redis:expire(cache_key(self), (self:ctx().cache.time or self:config_get("keep_cache_for")) + math.random(0, 10))
 
     -- Add this to the uris_by_expiry sorted set, for cache priming and analysis
     --redis:zadd('ledge:uris_by_expiry', expires, uri)
@@ -613,18 +612,6 @@ end
 
 function delete_from_cache(self)
     return self:ctx().redis:del(self:cache_key())
-end
-
-
-function expire(self)
-    local cache_key = self:cache_key()
-    local redis = self:ctx().redis
-    if redis:exists(cache_key) == 1 then
-        redis:hset(cache_key, "expires", tostring(ngx.time() - 1))
-        return true
-    else
-        return false
-    end
 end
 
 
