@@ -45,3 +45,8 @@ ldconfig
 ./objs/dso_tool -a=lua-nginx-module/
 ````
 
+==LINK
+
+https://github.com/openresty/lua-resty-core
+https://github.com/pintsized/ledge
+https://github.com/hamishforbes/lua-resty-upstream

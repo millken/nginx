@@ -25,8 +25,15 @@ local ngx_re_match = ngx.re.match
 local ngx_re_gmatch = ngx.re.gmatch
 local ngx_re_find = ngx.re.find
 
+local tbl_insert = table.insert
+local tbl_concat = table.concat
+local str_rep = string.rep
+local str_lower = string.lower
 local h_util = require "ledge.header_util"
 local response = require "ledge.response"
+local config = require "ledge.config"
+local http = require "resty.http"
+local http_headers = require "resty.http_headers"
 
 local _M = {
     _VERSION = '0.1 dev',
@@ -38,6 +45,18 @@ local _M = {
 
 local mt = { __index = _M }
 
+-- http://www.w3.org/Protocols/rfc2616/rfc2616-sec13.html#sec13.5.1
+local HOP_BY_HOP_HEADERS = {
+    ["connection"]          = true,
+    ["keep-alive"]          = true,
+    ["proxy-authenticate"]  = true,
+    ["proxy-authorization"] = true,
+    ["te"]                  = true,
+    ["trailers"]            = true,
+    ["transfer-encoding"]   = true,
+    ["upgrade"]             = true,
+    ["content-length"]      = true, -- Not strictly hop-by-hop, but we set dynamically downstream.
+}
 ---------------------------------------------------------------------------------------------------
 -- Event transition table.
 ---------------------------------------------------------------------------------------------------
@@ -830,6 +849,23 @@ _M.states = {
     cancelling_abort_request = function(self)
         return true
     end,
+    considering_esi_scan = function(self)
+
+        return self:e "esi_scan_disabled"
+    end,    
+
+    updating_cache = function(self)
+        local res = self:get_response()
+        if res.has_body then
+            if res:is_cacheable() then
+                return self:e "response_cacheable"
+            else
+                return self:e "response_not_cacheable"
+            end
+        else
+            return self:e "response_body_missing"
+        end
+    end,    
 }
 
 -- Transition to a new state.
@@ -895,10 +931,17 @@ function _M.e(self, event)
     end
 end
 
+function _M.relative_uri(self)
+    return ngx_re_gsub(ngx_var.uri, "\\s", "%20", "jo") .. ngx_var.is_args .. (ngx_var.query_string or "")
+end
+
 -- Fetches a resource from the origin server.
 function _M.fetch_from_origin(self)
     local res = response.new()
     self:emit("origin_required")
+
+    local ups = config:get_ups()
+    ngx_log(ngx_DEBUG, "host=", ups.host, "port=", ups.port)
 
     local method = ngx['HTTP_' .. ngx_req_get_method()]
     if not method then
@@ -907,34 +950,23 @@ function _M.fetch_from_origin(self)
     end
 
     local httpc
-    if self:config_get("use_resty_upstream") then
-        httpc = self:config_get("resty_upstream")
-    else
-        httpc = http.new()
-        httpc:set_timeout(self:config_get("upstream_connect_timeout"))
 
-        local ok, err = httpc:connect(self:config_get("upstream_host"), self:config_get("upstream_port"))
+    httpc = http.new()
+    --httpc:set_timeout(ups.connect_timeout)
 
-        if not ok then
-            if err == "timeout" then
-                res.status = 524 -- upstream server timeout
-            else
-                res.status = 503
-            end
-            return res
+    --local ok, err = httpc:connect(ups.host, ups.port)
+    local ok, err = httpc:connect("121.43.108.134", 80)    
+
+    if not ok then
+        if err == "timeout" then
+            res.status = 524 -- upstream server timeout
+        else
+            res.status = 503
         end
-
-        httpc:set_timeout(self:config_get("upstream_read_timeout"))
-
-        if self:config_get("upstream_use_ssl") == true then
-            local ok, err = httpc:ssl_handshake(false,
-                                                self:config_get("upstream_ssl_server_name"),
-                                                self:config_get("upstream_ssl_verify"))
-            if not ok then
-                ngx_log(ngx_ERR, "ssl handshake failed: ", err)
-            end
-        end
+        return res
     end
+
+    --httpc:set_timeout(ups.read_timeout)
 
     -- Case insensitve headers so that we can safely manipulate them
     local headers = http_headers.new()
@@ -942,20 +974,7 @@ function _M.fetch_from_origin(self)
         headers[k] = v
     end
 
-    -- Advertise ESI surrogate capabilities
-    if self:config_get("esi_enabled") then
-        local capability_entry =    (ngx_var.visible_hostname or ngx_var.hostname) 
-                                    .. '="' .. esi_capabilities() .. '"'
-        local sc = headers.surrogate_capability
-
-        if not sc then
-            headers.surrogate_capability = capability_entry
-        else
-            headers.surrogate_capability = sc .. ", " .. capability_entry
-        end
-    end
-
-    local client_body_reader, err = httpc:get_client_body_reader(self:config_get("buffer_size"))
+    local client_body_reader, err = httpc:get_client_body_reader()
     if err then
         ngx_log(ngx_ERR, "error getting client body reader: ", err)
     end
@@ -1026,5 +1045,35 @@ end
 function _M.read_from_cache(self)
 	return nil
 end
+
+function _M.filter_body_reader(self, filter_name, filter)
+    -- Keep track of the filters by name, just for debugging
+    local filters = self:ctx().body_filters
+    if not filters then filters = {} end
+
+    ngx_log(ngx_DEBUG, filter_name, "(", tbl_concat(filters, "("), "" , str_rep(")", #filters - 1), ")")
+
+    tbl_insert(filters, 1, filter_name)
+    self:ctx().body_filters = filters
+
+    return filter
+end
+
+function _M.delete_from_cache(self)
+
+end
+
+function _M.emit(self, event, res)
+    local events = self:ctx().events
+    for _, handler in ipairs(events[event] or {}) do
+        if type(handler) == "function" then
+            local ok, err = pcall(handler, res)
+            if not ok then
+                ngx_log(ngx_ERR, "Error in user callback for '", event, "': ", err)
+            end
+        end
+    end
+end
+
 
 return _M
