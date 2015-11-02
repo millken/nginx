@@ -50,3 +50,4 @@ ldconfig
 https://github.com/openresty/lua-resty-core
 https://github.com/pintsized/ledge
 https://github.com/hamishforbes/lua-resty-upstream
+https://github.com/lloydzhou/lua-resty-cache

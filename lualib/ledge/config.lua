@@ -27,7 +27,7 @@ function _M.new()
 end
 
 function _M.get_ups(self)
-	local host = str_lower(ngx_req_get_headers()["Host"])
+	local host = str_lower(ngx_req_get_headers()["Host"] or "")
     for k,v in pairs(ngx.ctx._host) do
     	if k == host then 
     		return ngx.ctx._ups[v]

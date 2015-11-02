@@ -100,8 +100,7 @@ _M.events = {
     },
 
     cacheable_method = {
-        { when = "checking_origin_mode", begin = "checking_request" },
-        { begin = "checking_origin_mode" },
+        { begin = "checking_request" },
     },
 
     -- PURGE method detected.
@@ -684,6 +683,10 @@ _M.actions = {
         ngx.status = 524
     end,
 
+    considering_esi_process = function(self)
+		self:e "esi_process_disabled"
+    end,
+    
     set_http_status_from_response = function(self)
         local res = self:get_response()
         if res.status then
@@ -941,7 +944,10 @@ function _M.fetch_from_origin(self)
     self:emit("origin_required")
 
     local ups = config:get_ups()
-    ngx_log(ngx_DEBUG, "host=", ups.host, "port=", ups.port)
+    if not ups then
+        res.status = ngx.HTTP_METHOD_NOT_IMPLEMENTED
+        return res
+    end
 
     local method = ngx['HTTP_' .. ngx_req_get_method()]
     if not method then
