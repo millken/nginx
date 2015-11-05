@@ -7,3 +7,12 @@
 [submodule "gperftools"]
 	path = gperftools
 	url = https://code.google.com/p/gperftools/
+[submodule "third/lua-cjson"]
+	path = third/lua-cjson
+	url = https://github.com/openresty/lua-cjson.git
+[submodule "ngx_devl_kit"]
+	path = ngx_devl_kit
+	url = https://github.com/simpl/ngx_devel_kit.git
+[submodule "third/llmdb"]
+	path = third/llmdb
+	url = https://github.com/shmul/lightningmdb.git
