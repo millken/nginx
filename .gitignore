@@ -12,6 +12,9 @@
 *.so.*
 *.dylib
 
+# Folder
+nginx
+
 # Executables
 *.exe
 *.out
