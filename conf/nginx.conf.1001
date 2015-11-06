@@ -1,0 +1,81 @@
+user  root;
+worker_processes 1;
+#worker_cpu_affinity auto;
+daemon off;
+error_log /var/log/nginx/error.log debug;
+
+pid /var/run/nginx.pid;
+
+#google_perftools_profiles /tmp/tcmalloc;
+
+events {
+    worker_connections 10240;
+}
+
+http {
+	lua_code_cache off;
+	lua_package_path '/home/github/tengcdn/lualib/?.lua;;';
+	lua_package_cpath '/home/github/tengcdn/lualib/?.so;;';
+
+    init_by_lua '
+        local ledge_m = require "ledge.ledge"
+        ledge = ledge_m.new()
+        local ledge_c = require "ledge.config"
+        config = ledge_c.new()
+    ';
+
+    
+	server {
+		listen 8001;
+		server_name www.visionad.com.cn;
+		#121.43.108.134
+		set_by_lua_block $a {
+	   		local conf = {
+	   			vhost = {
+	   				 {server = "www.visionad.com.cn:8001", ups = "g1"},
+	   			},
+	   			ups = {
+	   				g1 = {
+		   				 port = 80,
+		   				 host = "121.43.108.134",
+		   				 connect_timeout = 7,
+		   				 read_timeout = 10,		   				
+	   				},
+	   			},
+	   		}
+	   		config:load(conf)		
+		}
+		location / {
+		   	content_by_lua '
+
+		   		ledge:run()';
+		}
+	}
+
+	server {
+		listen 80;
+		server_name www.visionad.com.cn;
+		#121.43.108.134
+		set_by_lua_block $a {
+	   		local conf = {
+	   			vhost = {
+	   				 {server = "www.visionad.com.cn", ups = "g1"},
+	   			},
+	   			ups = {
+	   				g1 = {
+		   				 port = 80,
+		   				 host = "121.43.108.134",
+		   				 connect_timeout = 7,
+		   				 read_timeout = 10,		   				
+	   				},
+	   			},
+	   		}
+	   		config:load(conf)		
+		}
+		location / {
+		   	content_by_lua '
+
+		   		ledge:run()';
+		}
+	}	
+}

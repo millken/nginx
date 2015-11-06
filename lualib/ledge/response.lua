@@ -17,6 +17,9 @@ local ngx_http_time = ngx.http_time
 local ngx_time = ngx.time
 local ngx_req_get_headers = ngx.req.get_headers
 
+local ngx_log = ngx.log
+local ngx_DEBUG = ngx.DEBUG
+local json_safe = require "cjson"
 
 local _M = {
     _VERSION = '0.3'
@@ -52,6 +55,7 @@ end
 
 function _M.is_cacheable(self)
     -- Never cache partial content
+    ngx_log(ngx.DEBUG, self.status, "ttl=", self:ttl())
     if self.status == 206 then
         return false
     end
@@ -93,7 +97,7 @@ function _M.ttl(self)
             return tonumber(max_ages["max-age"])
         end
     end
-
+ngx_log(ngx_DEBUG, json_safe.encode(self.header))
     -- Fall back to Expires.
     local expires = self.header["Expires"]
     if expires then 

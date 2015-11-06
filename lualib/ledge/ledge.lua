@@ -47,6 +47,10 @@ local _M = {
 
 local mt = { __index = _M }
 
+local function _no_body_reader()
+    return nil
+end
+
 -- http://www.w3.org/Protocols/rfc2616/rfc2616-sec13.html#sec13.5.1
 local HOP_BY_HOP_HEADERS = {
     ["connection"]          = true,
@@ -208,7 +212,7 @@ _M.events = {
     -- We've fetched and got a response status and headers. We should consider potential for ESI
     -- before doing anything else.
     response_fetched = {
-        { begin = "considering_esi_scan" },
+        { begin = "updating_cache" },
     },
 
     partial_response_fetched = {
@@ -284,11 +288,7 @@ _M.events = {
     -- We've deduced that the new response cannot be cached. Essentially this is as per
     -- "response_cacheable", except we "delete" rather than "save", and we don't try to revalidate.
     response_not_cacheable = {
-        { after = "fetching_as_surrogate", begin = "publishing_collapse_failure",
-            but_first = "delete_from_cache" },
-        { after = "revalidating_in_background", begin = "exiting",
-            but_first = "delete_from_cache" },
-        { begin = "considering_esi_process", but_first = "delete_from_cache" },
+        { begin = "preparing_response", but_first = "delete_from_cache" },
     },
 
     -- A missing response body means a HEAD request or a 304 Not Modified upstream response, for
@@ -372,10 +372,6 @@ _M.events = {
     -- If it has been prepared, set status accordingly and serve. If not, prepare it.
     response_ready = {
         { in_case = "served", begin = "exiting" },
-        { in_case = "forced_cache", begin = "serving", but_first = "add_disconnected_warning"},
-        -- If we might ESI, then don't 304 downstream.
-        { when = "preparing_response", in_case = "esi_process_enabled",
-            begin = "serving", but_first = "set_http_status_from_response" },
         { when = "preparing_response", in_case = "not_modified",
             begin = "serving", but_first = "set_http_not_modified" },
         { when = "preparing_response", begin = "serving",
@@ -443,7 +439,7 @@ _M.events = {
 -- Pre-transitions. Actions to always perform before transitioning.
 ---------------------------------------------------------------------------------------------------
 _M.pre_transitions = {
-    exiting = { "redis_close", "httpc_close" },
+    exiting = {  "httpc_close" },
     exiting_worker = { "redis_close", "httpc_close" },
     checking_cache = { "read_cache" },
     -- Never fetch with client validators, but put them back afterwards.
@@ -593,7 +589,6 @@ _M.actions = {
 
     fetch = function(self)
         local res = self:fetch_from_origin()
-        ngx_log(ngx.DEBUG, json_safe.encode(res.body))
         if res.status ~= ngx.HTTP_NOT_MODIFIED then
             self:set_response(res)
         end
