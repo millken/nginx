@@ -34,6 +34,8 @@ local response = require "ledge.response"
 local config = require "ledge.config"
 local http = require "resty.http"
 local http_headers = require "resty.http_headers"
+local sophia = require "sophia"
+local json_safe = require "cjson"
 
 local _M = {
     _VERSION = '0.1 dev',
@@ -356,12 +358,12 @@ _M.events = {
     },
 
     esi_process_disabled = {
-        { begin = "considering_gzip_inflate", but_first = "set_esi_process_disabled" },
+        { begin = "preparing_response", but_first = "set_esi_process_disabled" },
     },
 
     esi_process_not_required = {
-        { begin = "considering_gzip_inflate",
-            but_first = { "set_esi_process_disabled", "remove_surrogate_control_header" },
+        { begin = "preparing_response", 
+            but_first = { "set_esi_process_disabled" },
         },
     },
 
@@ -591,6 +593,7 @@ _M.actions = {
 
     fetch = function(self)
         local res = self:fetch_from_origin()
+        ngx_log(ngx.DEBUG, json_safe.encode(res.body))
         if res.status ~= ngx.HTTP_NOT_MODIFIED then
             self:set_response(res)
         end
@@ -682,10 +685,6 @@ _M.actions = {
     set_http_connection_timed_out = function(self)
         ngx.status = 524
     end,
-
-    considering_esi_process = function(self)
-		self:e "esi_process_disabled"
-    end,
     
     set_http_status_from_response = function(self)
         local res = self:get_response()
@@ -767,6 +766,7 @@ function _M.handle_abort(self)
 end
 
 function _M.run(self)
+	ngx_log(ngx_DEBUG, json_safe.encode(ngx.ctx))
     local set, msg = ngx.on_abort(self:handle_abort())
     if set == nil then
        ngx_log(ngx_WARN, "on_abort handler not set: "..msg)
@@ -791,6 +791,16 @@ _M.states = {
             -- Only GET/HEAD are cacheable
             return self:e "cache_not_accepted"
         else
+        	local master = ngx.ctx._master
+        	local env = sophia.env()
+        	env:ctl("dir", master["cache_dir"])
+        	local cache = env:open()
+
+        	if cache == nil then
+        		ngx_log(ngx_WARN, "cache init error" )
+        		return self:e "cache_not_accepted"
+        	end
+        	self:ctx().cache = cache
             return self:e "cacheable_method"
         end
     end,
@@ -813,7 +823,6 @@ _M.states = {
     
     fetching = function(self)
         local res = self:get_response()
-
         if res.status >= 500 then
             return self:e "upstream_error"
         elseif res.status == ngx.HTTP_NOT_MODIFIED then
@@ -857,6 +866,19 @@ _M.states = {
         return self:e "esi_scan_disabled"
     end,    
 
+    considering_esi_process = function(self)
+		self:e "esi_process_disabled"
+    end,
+    
+    preparing_response = function(self)
+        return self:e "response_ready"
+    end,
+    
+	serving = function(self)
+        self:serve()
+        return self:e "served"
+    end,
+        
     updating_cache = function(self)
         local res = self:get_response()
         if res.has_body then
@@ -938,6 +960,15 @@ function _M.relative_uri(self)
     return ngx_re_gsub(ngx_var.uri, "\\s", "%20", "jo") .. ngx_var.is_args .. (ngx_var.query_string or "")
 end
 
+function _M.visible_hostname(self)
+    local name = ngx_var.visible_hostname or ngx_var.hostname
+    local server_port = ngx_var.server_port
+    if server_port ~= "80" and server_port ~= "443" then
+        name = name .. ":" .. server_port
+    end
+    return name
+end
+
 -- Fetches a resource from the origin server.
 function _M.fetch_from_origin(self)
     local res = response.new()
@@ -980,7 +1011,7 @@ function _M.fetch_from_origin(self)
         headers[k] = v
     end
 
-    local client_body_reader, err = httpc:get_client_body_reader()
+    local client_body_reader, err = httpc:get_client_body_reader(65536)
     if err then
         ngx_log(ngx_ERR, "error getting client body reader: ", err)
     end
@@ -1018,8 +1049,8 @@ function _M.fetch_from_origin(self)
     res.length = tonumber(origin.headers["Content-Length"])
 
     res.has_body = origin.has_body
-    res.body_reader = self:filter_body_reader("upstream_body_reader", origin.body_reader)
-
+    res.body_reader = origin.body_reader
+    
     if res.status < 500 then
         -- http://www.w3.org/Protocols/rfc2616/rfc2616-sec14.html#sec14.18
         -- A received message that does not have a Date header field MUST be assigned
@@ -1050,6 +1081,74 @@ end
 
 function _M.read_from_cache(self)
 	return nil
+end
+
+function _M.serve(self)
+    if not ngx.headers_sent then
+        local res = self:get_response() -- or self:get_response("fetched")
+        assert(res.status, "Response has no status.") -- FIXME: This will bail hard on error.
+
+        local visible_hostname = self:visible_hostname()
+
+        -- Via header
+        local via = "1.1 " .. visible_hostname
+
+        local res_via = res.header["Via"]
+        if  (res_via ~= nil) then
+            res.header["Via"] = via .. ", " .. res_via
+        else
+            res.header["Via"] = via
+        end
+
+        -- X-Cache header
+        -- Don't set if this isn't a cacheable response. Set to MISS is we fetched.
+        local ctx = self:ctx()
+        local state_history = ctx.state_history
+
+        if not ctx.event_history["response_not_cacheable"] then
+            local x_cache = "HIT from " .. visible_hostname
+            if state_history["fetching"] or state_history["revalidating_upstream"] then
+                x_cache = "MISS from " .. visible_hostname
+            end
+
+            local res_x_cache = res.header["X-Cache"]
+
+            if res_x_cache ~= nil then
+                res.header["X-Cache"] = x_cache .. ", " .. res_x_cache
+            else
+                res.header["X-Cache"] = x_cache
+            end
+        end
+
+        self:emit("response_ready", res)
+
+        if res.header then
+            for k,v in pairs(res.header) do
+                ngx.header[k] = v
+            end
+        end
+
+        if res.body_reader then
+            -- Go!
+            self:body_server(res.body_reader)
+        end
+
+        ngx.eof()
+    end
+end
+
+-- Resumes the reader coroutine and prints the data yielded. This could be
+-- via a cache read, or a save via a fetch... the interface is uniform.
+function _M.body_server(self, reader)
+    local buffer_size = 65535
+
+    repeat
+        local chunk, err = reader(buffer_size)
+        if chunk then
+            ngx_print(chunk)
+        end
+
+    until not chunk
 end
 
 function _M.filter_body_reader(self, filter_name, filter)
