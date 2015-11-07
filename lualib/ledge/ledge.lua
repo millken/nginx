@@ -36,6 +36,26 @@ local http = require "resty.http"
 local http_headers = require "resty.http_headers"
 local sophia = require "sophia"
 local json_safe = require "cjson"
+local msgpack = require "msgpack-pure"
+
+local co_yield = coroutine.yield
+local co_create = coroutine.create
+local co_status = coroutine.status
+local co_resume = coroutine.resume
+local co_wrap = function(func)
+    local co = co_create(func)
+    if not co then
+        return nil, "could not create coroutine"
+    else
+        return function(...)
+            if co_status(co) == "suspended" then
+                return select(2, co_resume(co, ...))
+            else
+                return nil, "can't resume a " .. co_status(co) .. " coroutine"
+            end
+        end
+    end
+end
 
 local _M = {
     _VERSION = '0.1 dev',
@@ -43,6 +63,11 @@ local _M = {
     ORIGIN_MODE_BYPASS = 1, -- Never go to the origin, serve from cache or 503.
     ORIGIN_MODE_AVOID  = 2, -- Avoid the origin, serve from cache where possible.
     ORIGIN_MODE_NORMAL = 4, -- Assume the origin is happy, use at will.
+
+    CACHE_MODE_NOMATCH = 0,
+    CACHE_MODE_DISABLED = 1,
+    CACHE_MODE_BASIC = 2,
+    CACHE_MODE_ADVANCED = 4,    
 }
 
 local mt = { __index = _M }
@@ -106,7 +131,7 @@ _M.events = {
     },
 
     cacheable_method = {
-        { begin = "checking_request" },
+        { begin = "checking_request", but_first = "set_cache_rule"},
     },
 
     -- PURGE method detected.
@@ -127,7 +152,6 @@ _M.events = {
     -- The request accepts cache. If we've already validated locally, we can think about serving.
     -- Otherwise we need to check the cache situtation.
     cache_accepted = {
-        { when = "revalidating_locally", begin = "considering_esi_process" },
         { begin = "checking_cache" },
     },
 
@@ -329,7 +353,7 @@ _M.events = {
 
     -- Standard non-conditional request.
     no_validator_present = {
-        { begin = "considering_esi_process" },
+        { begin = "preparing_response" },
     },
 
     -- The response has not been modified against the validators given. We'll exit 304 if we can
@@ -594,6 +618,64 @@ _M.actions = {
         end
     end,
 
+    set_cache_rule = function(self)
+        local cache = {
+                    status = _M.CACHE_MODE_NOMATCH,
+                    force = 0,
+                    disabled = 0,
+                    time =  0,
+                    regex = 0,
+                    rule = nil,
+                }        
+        for _,r in ipairs(ngx.ctx._cache) do
+            if r["basic"] then
+                if r["disabled"] and r["disabled"] == true then
+                    cache = {
+                        status = _M.CACHE_MODE_DISABLED
+                    }
+                elseif r["basic"] == true then
+                    cache = {
+                        status = _M.CACHE_MODE_BASIC,
+                        time = r["time"] or 3600
+                    }
+                end
+            --match url
+            elseif r["url"] then
+                if r["regex"] and r["regex"] == true then
+                    cache["regex"] = 1
+                    cache["time"] = r["time"] or 0
+                elseif h_util.header_has_directive(ngx.var.uri, r["url"]) then
+                    cache["status"] = _M.CACHE_MODE_ADVANCED
+                    if r["force"] and r["force"] == true then cache["force"] = 1 end
+                    if r["disabled"] and r["disabled"] == true then cache["disabled"] = 1 end
+                    cache["time"] = r["time"] or 0
+                end
+            --match file extension
+            elseif r["file_ext"] and h_util.header_has_directive(r["file_ext"], h_util.get_file_ext(ngx.var.uri)) then
+                cache = {
+                        status = _M.CACHE_MODE_ADVANCED,
+                        force = 0,
+                        disabled = 0,
+                        regex = 0,
+                        time = r["time"] or 0,
+                        file_ext= r["file_ext"],
+                    }                
+                if r["disabled"] and r["disabled"] == true then
+                    cache["disabled"] = 1
+                else
+                    if r["force"] and r["force"] == true then cache["force"] = 1 end
+                end
+            end
+        end
+        ngx_log(ngx_DEBUG, "set cache_rule :", json_safe.encode(cache))
+        ngx_var.cache_status = cache["status"] or 0
+        ngx_var.cache_force = cache["force"] or 0
+        ngx_var.cache_disabled = cache["disabled"] or 0
+        ngx_var.cache_time = cache["time"] or 0
+        ngx_var.cache_regex = cache["regex"] or 0
+        ngx_var.cache_rule = cache["url"] or cache["file_ext"] or nil
+    end,
+
     remove_client_validators = function(self)
         -- Keep these in case we need to restore them (after revalidating upstream)
         local client_validators = self:ctx().client_validators
@@ -697,6 +779,14 @@ function _M.new(self)
         host			= {
        		-- { name = "www.visionad.com.cn", port = 80, ip = "121.43.108.134" },
     	},
+        cache           = {
+                                status = _M.CACHE_MODE_DISABLED,
+                                file_ext = nil,
+                                uri = nil,
+                                force = false,
+                                regex = false,
+                                time = 0,
+        },
     }
 
     return setmetatable({ config = config }, mt)
@@ -859,8 +949,23 @@ _M.states = {
     considering_esi_scan = function(self)
 
         return self:e "esi_scan_disabled"
-    end,    
+    end, 
 
+    revalidating_locally = function(self)
+        if self:is_valid_locally() then
+            return self:e "not_modified"
+        else
+            return self:e "modified"
+        end
+    end,
+
+    considering_local_revalidation = function(self)
+        if self:can_revalidate_locally() then
+            return self:e "can_revalidate_locally"
+        else
+            return self:e "no_validator_present"
+        end
+    end,
     considering_esi_process = function(self)
 		self:e "esi_process_disabled"
     end,
@@ -953,6 +1058,10 @@ end
 
 function _M.relative_uri(self)
     return ngx_re_gsub(ngx_var.uri, "\\s", "%20", "jo") .. ngx_var.is_args .. (ngx_var.query_string or "")
+end
+
+function _M.full_uri(self)
+    return ngx_var.scheme .. '://' .. ngx_var.host .. self:relative_uri()
 end
 
 function _M.visible_hostname(self)
@@ -1063,6 +1172,17 @@ function _M.fetch_from_origin(self)
 end
 
 function _M.request_accepts_cache(self)
+
+    -- match and disabled
+    if ngx_var.cache_status == _M.CACHE_MODE_DISABLED 
+        or (ngx_var.cache_status == _M.CACHE_MODE_ADVANCED and ngx_var.cache_disabled == 1) then 
+        return false
+    end
+    if ngx_var.cache_status == _M.CACHE_MODE_ADVANCED
+       and ngx_var.cache_force == 1
+       and ngx_var.cache_disabled == 0 then
+        return true
+    end
     -- Check for no-cache
     local h = ngx_req_get_headers()
     if h_util.header_has_directive(h["Pragma"], "no-cache")
@@ -1076,6 +1196,33 @@ end
 
 function _M.read_from_cache(self)
 	return nil
+end
+
+function _M.is_valid_locally(self)
+    local req_h = ngx_req_get_headers()
+    local res = self:get_response()
+
+    local res_lm = res.header["Last-Modified"]
+    local req_ims = req_h["If-Modified-Since"]
+
+    if res_lm and req_ims then
+        local res_lm_parsed = ngx_parse_http_time(res_lm)
+        local req_ims_parsed = ngx_parse_http_time(req_ims)
+
+        if res_lm_parsed and req_ims_parsed then
+            if res_lm_parsed > req_ims_parsed then
+                return false
+            end
+        end
+    end
+
+    if res.header["Etag"] and req_h["If-None-Match"] then
+        if res.header["Etag"] ~= req_h["If-None-Match"] then
+            return false
+        end
+    end
+
+    return true
 end
 
 function _M.serve(self)
@@ -1157,6 +1304,155 @@ function _M.filter_body_reader(self, filter_name, filter)
     self:ctx().body_filters = filters
 
     return filter
+end
+
+function _M.save_to_cache(self, res)
+    self:emit("before_save", res)
+
+    local uncacheable_headers = {
+        --"Connection",
+        --"Keep-Alive",
+        "Proxy-Authenticate",
+        "Proxy-Authorization",
+        "TE",
+        "Trailers",
+        --"Transfer-Encoding",
+        "Upgrade",
+
+        -- We also choose not to cache the content length, it is set by Nginx
+        -- based on the response body.
+        --"Content-Length",
+    }
+
+    local length = res.length
+
+    -- Also don't cache any headers marked as Cache-Control: (no-cache|no-store|private)="header".
+    local cc = res.header["Cache-Control"]
+    if cc then
+        if type(cc) == "table" then cc = tbl_concat(cc, ", ") end
+
+        if str_find(cc, "=") then
+            local patterns = { "no%-cache", "no%-store", "private" }
+            for _,p in ipairs(patterns) do
+                for h in str_gmatch(cc, p .. "=\"?([%a-]+)\"?") do
+                    tbl_insert(uncacheable_headers, h)
+                end
+            end
+        end
+    end
+
+    -- Utility to search in uncacheable_headers.
+    local function is_uncacheable(t, h)
+        for _, v in ipairs(t) do
+            if str_lower(v) == str_lower(h) then
+                return true
+            end
+        end
+        return nil
+    end
+
+    -- Turn the headers into a flat list of pairs for the Redis query.
+    local h = {}
+    for header,header_value in pairs(res.header) do
+        if not is_uncacheable(uncacheable_headers, header) then
+            if type(header_value) == 'table' then
+                -- Multiple headers are represented as a table of values
+                local header_value_len = tbl_getn(header_value)
+                for i = 1, header_value_len do
+                    tbl_insert(h, i..':'..header)
+                    tbl_insert(h, header_value[i])
+                end
+            else
+                tbl_insert(h, header)
+                tbl_insert(h, header_value)
+            end
+        end
+    end
+
+    local ttl = 0
+    if tonumber(ngx_var.cache_time) > 0 then
+        ttl = tonumber(ngx_var.cache_time)
+    else
+        ttl = res:ttl()
+    end
+    local expires = ttl + ngx_time()
+    local uri = self:full_uri()
+
+    local cache_content = {
+        status = res.status,
+        uri= uri,
+        expires= expires,
+        generated_ts= ngx_parse_http_time(res.header["Date"]),
+        saved_ts= ngx_time(),
+        header= h,
+        body = nil,
+    }
+
+    if res.has_body then
+        res.body_reader = self:filter_body_reader(
+            "cache_body_writer",
+            self:get_cache_body_writer(res.body_reader, cache_content)
+        )
+        
+    end
+end
+
+function _M.get_cache_body_writer(self, reader, caches)
+    local buffer_size = 65535
+    local max_memory = 1024 * 1024 * 5
+    local transaction_aborted = false
+    ngx_log(ngx_DEBUG, json_safe.encode(caches))
+
+    return co_wrap(function(buffer_size)
+        local size = 0
+        local chunks = {}
+        repeat
+            local chunk, err = reader(buffer_size)
+            ngx_log(ngx_DEBUG, "err")
+            if chunk then
+                if not transaction_aborted then
+                    size = size + #chunk
+
+                    -- If we cannot store any more, delete everything.
+                    -- TODO: Options for persistent storage and retaining metadata etc.
+                    if size > max_memory then
+                        transaction_aborted = true
+                        ngx_log(ngx_NOTICE, "cache item deleted as it is larger than ",
+                                               max_memory, " bytes")
+                    else
+                        tbl_insert(chunks, chunk)
+                    end
+                end
+                co_yield(chunk, nil)
+            end
+        until not chunk
+            ngx_log(ngx_DEBUG, json_safe.encode(transaction_aborted))
+        if not transaction_aborted then
+            caches.body = chunks
+            ngx_log(ngx_DEBUG, json_safe.encode(caches))
+            self:ctx().cache.set("xxxxxx", "msgpack.pack(caches)")
+        end
+    end)
+end
+
+function _M.can_revalidate_locally(self)
+    local req_h = ngx_req_get_headers()
+    local req_ims = req_h["If-Modified-Since"]
+
+    if req_ims then
+        if not ngx_parse_http_time(req_ims) then
+            -- Bad IMS HTTP datestamp, lets remove this.
+            ngx_req_set_header("If-Modified-Since", nil)
+        else
+            return true
+        end
+    end
+
+    if req_h["If-None-Match"] then
+        return true
+    end
+
+    return false
 end
 
 function _M.delete_from_cache(self)

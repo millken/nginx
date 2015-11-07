@@ -46,6 +46,7 @@ function _M.load(self, config)
     	elseif k == "ups" then
     		ngx.ctx._ups = v
     	elseif k == "cache" then
+            ngx.ctx._cache = v
     	elseif k == "master" then
     		ngx.ctx._master = v
     	end

@@ -18,11 +18,16 @@ local ngx_time = ngx.time
 local ngx_req_get_headers = ngx.req.get_headers
 
 local ngx_log = ngx.log
+local ngx_var = ngx.var
 local ngx_DEBUG = ngx.DEBUG
 local json_safe = require "cjson"
 
 local _M = {
-    _VERSION = '0.3'
+    _VERSION = '0.3',
+    CACHE_MODE_NOMATCH = 0,
+    CACHE_MODE_DISABLED = 1,
+    CACHE_MODE_BASIC = 2,
+    CACHE_MODE_ADVANCED = 4,      
 }
 
 local mt = {
@@ -48,18 +53,22 @@ function _M.new()
                             body = body,
                             header = header,
                             remaining_ttl = 0,
-                            has_esi = false,
+                            
     }, mt)
 end
 
 
 function _M.is_cacheable(self)
     -- Never cache partial content
-    ngx_log(ngx.DEBUG, self.status, "ttl=", self:ttl())
     if self.status == 206 then
         return false
     end
+   ngx_log(ngx.DEBUG, self.status, "ttl=", self:ttl(), tonumber(ngx_var.cache_status), ngx_var.cache_disabled)
 
+    if (tonumber(ngx_var.cache_status) == _M.CACHE_MODE_ADVANCED and tonumber(ngx_var.cache_disabled) == 0) then
+        return true
+    end    
+    ngx_log(ngx_DEBUG, "2")
     for k,v in pairs(NOCACHE_HEADERS) do
         for i,h in ipairs(v) do
             if self.header[k] and self.header[k] == h then
@@ -67,7 +76,7 @@ function _M.is_cacheable(self)
             end
         end
     end
-
+    ngx_log(ngx_DEBUG, "3")
     if self:ttl() > 0 then
         return true
     else

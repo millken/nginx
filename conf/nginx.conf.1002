@@ -28,10 +28,16 @@ http {
 		listen 80;
 		server_name www.visionad.com.cn;
 		#121.43.108.134
+		set $cache_status 0;
+		set $cache_force 0;
+		set $cache_disabled 0;
+		set $cache_time 0;
+		set $cache_regex 0;
+		set $cache_rule "";
 		set_by_lua_block $a {
 	   		local conf = {
 	   		    master = {
-	   		        cache_dir = "/tmp/xxx.mdb",
+	   		        cache_dir = "/tmp/cache1",
 	   		    },
 	   			vhost = {
 	   				 {server = "www.visionad.com.cn", ups = "g1"},
@@ -44,6 +50,12 @@ http {
 		   				 read_timeout = 10,		   				
 	   				},
 	   			},
+	   			cache = {
+	   				{basic = ture, time = 600},
+	   				{file_ext="jpg|gif|png", time=3600, force=true},
+	   				{url="/*/", regex=true, time=60},
+	   				{url="/admin/", disabled=true},
+	   			}
 	   		}
 	   		config:load(conf)		
 		}

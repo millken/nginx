@@ -45,8 +45,15 @@ ldconfig
 ./objs/dso_tool -a=lua-nginx-module/
 ````
 
-==LINK
+````
+//luajit
+wget http://luajit.org/download/LuaJIT-2.1.0-beta1.tar.gz
+# export LUAJIT_LIB=/usr/local/lib
+# export LUAJIT_INC=/usr/local/include/luajit-2.1/
+````
 
+==LINK
+https://github.com/Wiladams/LJIT2Sophia
 https://github.com/openresty/lua-resty-core
 https://github.com/pintsized/ledge
 https://github.com/hamishforbes/lua-resty-upstream
