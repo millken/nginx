@@ -12,7 +12,7 @@ events {
 
 http {
 	lua_code_cache off;
-	lua_package_path '/home/github/tengcdn/lualib/?.lua;;';
+	lua_package_path '/home/github/tengcdn/lualib/?.lua;;/home/github/tengcdn/lualib/sophia/?.lua;;';
 	lua_package_cpath '/home/github/tengcdn/lualib/?.so;;';
 
     init_by_lua '

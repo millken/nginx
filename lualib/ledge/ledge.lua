@@ -877,9 +877,7 @@ _M.states = {
             return self:e "cache_not_accepted"
         else
         	local master = ngx.ctx._master
-        	local env = sophia.env()
-        	env:ctl("dir", master["cache_dir"])
-        	local cache = env:open()
+        	local cache = sophia.new(master["cache_dir"])
 
         	if cache == nil then
         		ngx_log(ngx_WARN, "cache init error" )
