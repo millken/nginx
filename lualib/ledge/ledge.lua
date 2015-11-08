@@ -877,6 +877,7 @@ _M.states = {
             return self:e "cache_not_accepted"
         else
         	local master = ngx.ctx._master
+            ngx_log(ngx_DEBUG, json_safe.encode(master["cache_dir"]))
         	local cache = sophia.new(master["cache_dir"])
 
         	if cache == nil then

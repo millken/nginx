@@ -1,4 +1,7 @@
-local sophia = require("sophia.sophia")
+local sophia = require("sophia.sophia")()
+local ffi = require("ffi")
+local libc = require("sophia.libc")()
+local ngx_log = ngx.log
 
 local _M = { _VERSION = '0.1',
         }
@@ -6,17 +9,15 @@ local _M = { _VERSION = '0.1',
 local mt = { __index = _M }
 
 function _M.new(self, path)
-    local db = nil
-    local err = nil
-
-    if not db then
-        db, err = sophia.SophiaDatabase(path);
-        if err then
-            return nil, err
-        end
+    local env = sp_env();
+    sp_setstring(env, "sophia.path", "_test", 0);
+    sp_setstring(env, "db", "test", 0);
+    local db = sp_getobject(env, "db.test");
+    local rc = sp_open(env);
+    if (rc == -1) then
+        return nil, error(rc);
     end
-
-    self.db = db
+    --self.db = db
 
     return setmetatable({ db = db }, mt)
 end
@@ -30,21 +31,25 @@ end
 function _M.put(self, key, value)
     local db = self.db
 
-    local ok, err = db:upsert(key, value)
-    return ok, err
+    local key = ffi.new("uint32_t[1]", 1);
+    local o = sp_object(db);
+    sp_setstring(o, "key", key, ffi.sizeof("uint32_t"));
+    sp_setstring(o, "value", key, ffi.sizeof("uint32_t"));
+    rc = sp_set(db, o);
+    if (rc == -1) then
+        return false, error(rc);
+    end
+    return true, nil
 end
 
 function _M.get(self, key)
     local db = self.db
-    local value, err = db:retrieve(key, #key)
-    return value, err
+
 end
 
 function _M.del(self, key)
     local db = self.db
-    local ok = db:delete(key, #key)
-
-    return ok
+    return true
 end
 
 
