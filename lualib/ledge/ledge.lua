@@ -34,7 +34,7 @@ local response = require "ledge.response"
 local config = require "ledge.config"
 local http = require "resty.http"
 local http_headers = require "resty.http_headers"
-local sophia = require "sophia"
+local unqlite = require 'unqlite'
 local json_safe = require "cjson"
 local msgpack = require "msgpack-pure"
 
@@ -877,11 +877,11 @@ _M.states = {
             return self:e "cache_not_accepted"
         else
         	local master = ngx.ctx._master
-            ngx_log(ngx_DEBUG, json_safe.encode(master["cache_dir"]))
-        	local cache = sophia.new(master["cache_dir"])
+            ngx_log(ngx_DEBUG, json_safe.encode(master["cache_file"]))
+        	local cache = unqlite.open(master["cache_file"])
 
         	if cache == nil then
-        		ngx_log(ngx_WARN, "cache init error" )
+        		ngx_log(ngx_WARN, "cache init error", err )
         		return self:e "cache_not_accepted"
         	end
         	self:ctx().cache = cache
@@ -1194,7 +1194,16 @@ function _M.request_accepts_cache(self)
 end
 
 function _M.read_from_cache(self)
-	return nil
+    local cache = self:ctx().cache
+    local res = response.new()
+    local uri = self:full_uri()
+    local caches = cache:get(uri)
+    local cache_content = msgpack.unpack(caches)
+    ngx_log(ngx_DEBUG, json_safe.encode(cache_content))
+    res.status = cache_content.status
+    res.body = cache_content.body
+    res.header = cache_content.header
+	return res
 end
 
 function _M.is_valid_locally(self)
@@ -1400,7 +1409,7 @@ function _M.get_cache_body_writer(self, reader, caches)
     local buffer_size = 65535
     local max_memory = 1024 * 1024 * 5
     local transaction_aborted = false
-    ngx_log(ngx_DEBUG, json_safe.encode(caches))
+    --ngx_log(ngx_DEBUG, json_safe.encode(caches))
 
     return co_wrap(function(buffer_size)
         local size = 0
@@ -1425,11 +1434,10 @@ function _M.get_cache_body_writer(self, reader, caches)
                 co_yield(chunk, nil)
             end
         until not chunk
-            ngx_log(ngx_DEBUG, json_safe.encode(transaction_aborted))
         if not transaction_aborted then
             caches.body = chunks
-            ngx_log(ngx_DEBUG, json_safe.encode(caches))
-            self:ctx().cache.set("xxxxxx", "msgpack.pack(caches)")
+            --ngx_log(ngx_DEBUG, json_safe.encode(caches))
+            self:ctx().cache:set(self:full_uri(), msgpack.pack(caches))
         end
     end)
 end
