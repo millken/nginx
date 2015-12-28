@@ -10,3 +10,6 @@
 [submodule "third/llmdb"]
 	path = third/llmdb
 	url = https://github.com/shmul/lightningmdb.git
+[submodule "ngx_http_dyups_module"]
+	path = ngx_http_dyups_module
+	url = https://github.com/yzprofile/ngx_http_dyups_module.git

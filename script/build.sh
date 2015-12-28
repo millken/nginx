@@ -13,8 +13,8 @@ fi
 
 PWD=$(cd "$(dirname "$0")"; pwd)
 ROOT=$(dirname "$PWD")
-NGINX=$PWD/nginx
-TENGINE=$PWD/tengine
+PATCH=$ROOT/patch
+NGINX=$ROOT/nginx
 usage()
 {
 	echo "Usage: `basename $0` tengine|nginx"
@@ -23,6 +23,8 @@ usage()
 buildNgx()
 {
 	cd $NGINX
+	export LUAJIT_INC=/usr/local/luajit-2.0.1/include/luajit-2.0/
+	export LUAJIT_LIB=/usr/local/luajit-2.0.1/lib/
 ./configure --prefix=/nginx   \
 	--with-http_ssl_module \
 	--without-http_fastcgi_module \
@@ -38,18 +40,12 @@ buildNgx()
 	--without-mail_imap_module \
 	--without-mail_smtp_module \
 	--with-pcre \
-	--add-module=../ext/headers-more-nginx-module \
-	--add-module=../ext/echo-nginx-module \
-	--add-module=../ext/nginx-sticky-module-ng \
-	--add-module=../ext/ngx_http_ydwaf_module \
-	--add-module=../ext/ngx_yd_single_ssl_module \
-	--add-module=../ext/ngx_http_conn_statistics \
-	--add-module=../ext/ccprotect \
-	--add-module=../ext/ngx_http_process_coredump \
-	--add-module=../ext/ngx_http_snap_js_module \
-	--add-module=../ext/ngx_http_acl_module\
+	--add-module=../ngx_devl_kit \
+	--add-module=../lua-nginx-module \
+	--add-module=../ngx_http_dyups_module \
 	--with-debug \
 	--with-cc-opt="-O0"
+sed -i 's#-L/usr/local/luajit-2.0.1/lib/ -lluajit-5.1#/usr/local/lib/libluajit-5.1.a#' objs/Makefile #静态编译
 make
 	
 }

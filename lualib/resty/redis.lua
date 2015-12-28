@@ -4,13 +4,14 @@
 local sub = string.sub
 local byte = string.byte
 local tcp = ngx.socket.tcp
-local concat = table.concat
 local null = ngx.null
+local type = type
 local pairs = pairs
 local unpack = unpack
 local setmetatable = setmetatable
 local tonumber = tonumber
-local error = error
+local tostring = tostring
+--local error = error
 
 
 local ok, new_tab = pcall(require, "table.new")
@@ -209,7 +210,7 @@ local function _read_reply(self, sock)
             return null
         end
 
-        local vals = new_tab(n, 0);
+        local vals = new_tab(n, 0)
         local nvals = 0
         for i = 1, n do
             local res, err = _read_reply(self, sock)
@@ -266,8 +267,9 @@ local function _gen_req(args)
         end
     end
 
-    -- it is faster to do string concatenation on the Lua land
-    return concat(req)
+    -- it is much faster to do string concatenation on the C land
+    -- in real world (large number of strings in the Lua VM)
+    return req
 end
 
 
@@ -463,4 +465,3 @@ end
 
 
 return _M
-
