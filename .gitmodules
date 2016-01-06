@@ -13,3 +13,6 @@
 [submodule "ngx_http_dyups_module"]
 	path = ngx_http_dyups_module
 	url = https://github.com/yzprofile/ngx_http_dyups_module.git
+[submodule "lua-upstream-cache-nginx-module"]
+	path = lua-upstream-cache-nginx-module
+	url = https://github.com/sapo/lua-upstream-cache-nginx-module.git
