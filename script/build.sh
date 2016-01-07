@@ -43,7 +43,8 @@ buildNgx()
 	--add-module=../ngx_devl_kit \
 	--add-module=../lua-nginx-module \
 	--add-module=../ngx_http_dyups_module \
-	--add-module=../lua-upstream-cache-nginx-module
+	--add-module=../lua-upstream-cache-nginx-module \
+	--add-module=../headers-more-nginx-module \
 	--with-debug \
 	--with-cc-opt="-O0"
 sed -i 's#-L/usr/local/luajit-2.0.1/lib/ -lluajit-5.1#/usr/local/lib/libluajit-5.1.a#' objs/Makefile #静态编译

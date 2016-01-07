@@ -16,3 +16,6 @@
 [submodule "lua-upstream-cache-nginx-module"]
 	path = lua-upstream-cache-nginx-module
 	url = https://github.com/sapo/lua-upstream-cache-nginx-module.git
+[submodule "headers-more-nginx-module"]
+	path = headers-more-nginx-module
+	url = https://github.com/openresty/headers-more-nginx-module.git
