@@ -1,0 +1,80 @@
+user  root;
+worker_processes 1;
+daemon off;
+error_log stderr info;
+backtrace_log /var/log/nginx/coredump.log;
+
+pid /var/run/nginx.pid;
+
+events {
+    worker_connections 1024;
+}
+
+http {
+	lua_code_cache off;
+	lua_package_path '/home/github/tengcdn/lualib/?.lua;;';
+	lua_package_cpath '/home/github/tengcdn/lualib/?.so;;';
+    lua_shared_dict settings 5m;
+    lua_shared_dict wsettings 5m;
+    lua_shared_dict upstreams 5m;
+    	
+	init_by_lua_block {
+        local teng_worker = require "resty.teng.worker"
+        worker = teng_worker.new()
+    }
+    
+    init_worker_by_lua_block {
+    	worker:start({
+        	interval = 1,
+    	})
+    }
+    
+	upstream host1 {
+		server 127.0.0.1:8088;
+	}
+
+	upstream host2 {
+		server 127.0.0.1:8089;
+	}
+    server {
+        listen   8080;
+
+        location / {
+            proxy_pass http://$host;
+        }
+    }
+
+    server {
+        listen 8088;
+        location / {
+            return 200 "8088";
+        }
+    }
+
+    server {
+        listen 8089;
+        location / {
+            return 200 "8089";
+        }
+    }
+    
+	server {
+		listen 8001;
+		listen 80;
+				
+		location @dyup_init {
+        	dyups_interface;
+    	}
+    	
+		location / {
+		    set $gzip_flag "on";
+		    set $hostgroup "";
+		     if ( $gzip_flag = "off" ) { gzip off; }
+
+			rewrite_by_lua_block {
+				worker:rewrite()
+			}
+		     proxy_pass http://$hostgroup;		   
+		} 	
+    }
+}

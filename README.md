@@ -75,6 +75,7 @@ Value: Json string
         "{\"gzip\": \"on\", \"upstream\": \"server 127.0.0.1:8080;\", \"server_type\": 0}"
 ````
 ==LINK
+http://cmgs.me/life/eru-lb
 https://github.com/Wiladams/LJIT2Sophia
 https://github.com/openresty/lua-resty-core
 https://github.com/pintsized/ledge
