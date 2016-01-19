@@ -1,7 +1,7 @@
 local cjson = require "cjson"
 local redis_mod = require "resty.redis"
 local dyups = require "ngx.dyups"
-local events = require "cdn.events"
+local events_mod = require "cdn.events"
 
 local   tostring, ipairs, pairs, type, tonumber, next, unpack =
         tostring, ipairs, pairs, type, tonumber, next, unpack
@@ -25,6 +25,7 @@ local co_yield = coroutine.yield
 local upstreams = ngx.shared.upstreams
 local settings = ngx.shared.settings
 local wsettings = ngx.shared.wsettings
+local locked = ngx.shared.locked
 
 local _M = {
     _VERSION = '0.01',
@@ -62,45 +63,23 @@ function _M.rewrite(self)
 		        ngx.exit(404)
 		    end
 		end
-
 	else
 		ngx_var.hostgroup = ngx_var.host
 	end
 	if ngx_var.hostgroup == "" then
 		ngx.exit(404)
 	end
-	dyups.update(ngx_var.hostgroup, upstreams:get(ngx_var.hostgroup))
-end
-
-function _M.set_config(hostname, sett)
-	ngx_log(ngx_INFO,"hostname :" .. hostname .. ", setting :" .. sett)
-    local tmpkv = {}
-    local gsett = cjson.decode(sett)
-    if gsett ~= nil then
-        for k,v in pairs(gsett) do
-            if (k=="upstream") then
-				upstreams:set(hostname, v)
-				ngx_log(ngx_INFO,"hostname :" .. hostname .. ", ups :" .. v)
-            elseif k=="server_type" then
-                if v==1 then
-                    ngx_log(ngx_INFO,"got a wildcard domain set")
-                    wsettings:set(gsett["wildname"], hostname)
-                end
-            else
-                tmpkv[k]=v
-            end
-        end
-    	settings:set(hostname, cjson.encode(tmpkv))
-    else
-    	ngx_log(ngx_ERR, "get sett empty")
-    end	
+	--dyups.update(ngx_var.hostgroup, upstreams:get(ngx_var.hostgroup))
 end
 
 function _M.start(self, options)
     local options = setmetatable(options, { __index = DEFAULT_OPTIONS })
 
     local function worker()
+		if locked:get("l") ~= 1 then
+			locked:set("l", 1)
 		local redis = redis_mod:new()
+		local events = events_mod:new()
 		local ok, err = redis:connect("127.0.0.1",6379)
 		if not ok then
 			ngx_log(ngx_ERR, "could not connect to Redis: ", err)
@@ -117,14 +96,7 @@ function _M.start(self, options)
 		local ok, err = settings:safe_add("localhost", "")
 		if ok then
 			ngx_log(ngx_INFO, "loading config from redis")
-			local sites = redis:keys("site_*")
-			if sites then
-				for _,host in ipairs(sites) do
-					local hostname = string.sub(host, 6)
-					local sett = redis:get(host)
-					self.set_config(hostname, sett)
-				end
-			end
+			events:e "reload_config"
 		end
 		redis:subscribe("cdn.event")
 		while true do
@@ -135,9 +107,12 @@ function _M.start(self, options)
 			end
 			ngx_log(ngx_DEBUG, "redis reply: " .. cjson.encode(msg))
 			local subs = cjson.decode(msg[3])
-			local event = events:new()
-			event:e( subs["event"] )
-		end	
+			
+			events:e( subs["event"], msg[3] )
+		end
+		--locked:set("l", 0)
+
+		end
 		
 		local ok, err = ngx_timer_at(options.interval, worker)
 		if not ok then

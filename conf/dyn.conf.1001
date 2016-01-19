@@ -1,7 +1,7 @@
 user  root;
-worker_processes 1;
+worker_processes 2;
 daemon off;
-error_log stderr info;
+error_log stderr notice;
 backtrace_log /var/log/nginx/coredump.log;
 
 pid /var/run/nginx.pid;
@@ -14,9 +14,11 @@ http {
 	lua_code_cache off;
 	lua_package_path '/home/github/tengcdn/lualib/?.lua;;';
 	lua_package_cpath '/home/github/tengcdn/lualib/?.so;;';
-    lua_shared_dict settings 5m;
-    lua_shared_dict wsettings 5m;
-    lua_shared_dict upstreams 5m;
+    lua_shared_dict settings 50m;
+    lua_shared_dict wsettings 50m;
+    lua_shared_dict upstreams 50m;
+    lua_shared_dict locked 100k;
+    #dyups_trylock off;
     	
 	init_by_lua_block {
         local cdn_worker = require "cdn.worker"

@@ -11,6 +11,7 @@ local ngx_re_find = ngx.re.find
 local ngx_DEBUG = ngx.DEBUG
 local ngx_ERR = ngx.ERR
 local ngx_INFO = ngx.INFO
+local ngx_NOTICE = ngx.NOTICE
 local ngx_now = ngx.now
 local ngx_timer_at = ngx.timer.at
 local cjson_encode = cjson.encode
@@ -38,15 +39,16 @@ end
 function _M.set_config(hostname, sett)
 	ngx_log(ngx_INFO,"hostname :" .. hostname .. ", setting :" .. sett)
     local tmpkv = {}
-    local gsett = cjson.decode(sett)
+    local gsett = cjson_decode(sett)
     if gsett ~= nil then
         for k,v in pairs(gsett) do
             if (k=="upstream") then
+				dyups.update(hostname, v)
 				upstreams:set(hostname, v)
-				ngx_log(ngx_INFO,"hostname :" .. hostname .. ", ups :" .. v)
+				--ngx_log(ngx_INFO,"hostname :" .. hostname .. ", ups :" .. v)
             elseif k=="server_type" then
                 if v==1 then
-                    ngx_log(ngx_INFO,"got a wildcard domain set")
+                    --ngx_log(ngx_INFO,"got a wildcard domain set")
                     wsettings:set(gsett["wildname"], hostname)
                 end
             else
@@ -60,8 +62,10 @@ function _M.set_config(hostname, sett)
 end
 
 _M.events = {
-	flush_config = { "set_empty_config" },
-	reload_config = {"connect_redis", "load_config"}
+	flush_config = {"set_empty_config"},
+	load_config = {"connect_redis", "load_config"},
+	reload_config = {"set_empty_config", "connect_redis", "load_config"},
+	add_config = {"set_config"},
 }
 
 _M.states = {
@@ -87,6 +91,8 @@ _M.states = {
 		if not redis then
 			return nil, "not initialized"
 		end
+		local t1 = ngx_now()
+		ngx_log(ngx_NOTICE, t1)
 		local sites = redis:keys("site_*")
 		if sites then
 			for _,host in ipairs(sites) do
@@ -94,17 +100,23 @@ _M.states = {
 				local sett = redis:get(host)
 				self.set_config(hostname, sett)
 			end
-		end	
+		end
+		local t2 = ngx_now() - t1 
+		ngx_log(ngx_NOTICE , "load config cost time : ", t2)
+	end,
+
+	set_config = function(self, body)
+		local bjson = cjson_decode(body)
+		self.set_config(bjson["hostname"], cjson_encode(bjson["sett"]))
 	end,
 
 	set_empty_config = function(self)
-		ngx_log(ngx_INFO, "empty config",  cjson_encode(self.config.redis))
 		settings:flush_all()
 		wsettings:flush_all()
 	end,
 }
 
-function _M.e(self, event)
+function _M.e(self, event, ...)
     ngx_log(ngx_INFO, "#e: ", event)
 	local events = self.events[event]
 	if not events then
@@ -113,12 +125,11 @@ function _M.e(self, event)
 		if type(events) == "table" then
 			for _, state in ipairs(events) do
 				ngx_log(ngx_DEBUG, "#t: ", state)
-				self.states[state](self)
+				self.states[state](self, ...)
 			end
 		else
-
 			ngx_log(ngx_DEBUG, "#t: ", events)
-			self.states[events](self)
+			self.states[events](self, ...)
 		end
     end
 end
