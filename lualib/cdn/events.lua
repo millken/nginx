@@ -21,6 +21,8 @@ local str_sub = string.sub
 local upstreams = ngx.shared.upstreams
 local settings = ngx.shared.settings
 local wsettings = ngx.shared.wsettings
+local locked = ngx.shared.locked
+local upstream_cached = ngx.shared.upstream_cached
 
 local _M = {
     _VERSION = '0.01',
@@ -37,13 +39,13 @@ function _M.new(self)
 end
 
 function _M.set_config(hostname, sett)
-	ngx_log(ngx_INFO,"hostname :" .. hostname .. ", setting :" .. sett)
+	ngx_log(ngx_DEBUG,"hostname :" .. hostname .. ", setting :" .. sett)
     local tmpkv = {}
     local gsett = cjson_decode(sett)
     if gsett ~= nil then
         for k,v in pairs(gsett) do
             if (k=="upstream") then
-				dyups.update(hostname, v)
+				--dyups.update(hostname, v)
 				upstreams:set(hostname, v)
 				--ngx_log(ngx_INFO,"hostname :" .. hostname .. ", ups :" .. v)
             elseif k=="server_type" then
@@ -62,10 +64,10 @@ function _M.set_config(hostname, sett)
 end
 
 _M.events = {
-	flush_config = {"set_empty_config"},
-	load_config = {"connect_redis", "load_config"},
-	reload_config = {"set_empty_config", "connect_redis", "load_config"},
-	add_config = {"set_config"},
+	flush_config = {"lock", "set_empty_config", "unlock"},
+	load_config = {"lock", "connect_redis", "load_config", "unlock"},
+	reload_config = {"lock", "set_empty_config", "connect_redis", "load_config", "unlock"},
+	add_config = {"lock", "set_config", "unlock"},
 }
 
 _M.states = {
@@ -76,15 +78,23 @@ _M.states = {
 			host = host.host,
 			port = host.port,
 		}
-		ngx_log(ngx_INFO, cjson_encode(redis_params))
+		ngx_log(ngx_INFO, "connecting to redis: ", host.host, ":", host.port)
 		local redis = redis_mod:new()
 		local ok, err = redis:connect(redis_params.host, redis_params.port)
         if not ok then
-            ngx_log(ngx_ERR, "could not connect to Redis: ", err)
+            ngx_log(ngx_ERR, "could not connect to redis: ", err)
         else
             self.redis = redis
         end
     end,
+
+	lock = function(self)
+		locked:set("states", 1)
+	end,
+
+	unlock = function(self)
+		locked:set("states", 0)
+	end,
 
 	load_config = function(self)
 		local redis = self.redis
@@ -92,7 +102,6 @@ _M.states = {
 			return nil, "not initialized"
 		end
 		local t1 = ngx_now()
-		ngx_log(ngx_NOTICE, t1)
 		local sites = redis:keys("site_*")
 		if sites then
 			for _,host in ipairs(sites) do
@@ -113,6 +122,8 @@ _M.states = {
 	set_empty_config = function(self)
 		settings:flush_all()
 		wsettings:flush_all()
+		upstreams:flush_all()
+		upstream_cached:flush_all()
 	end,
 }
 

@@ -1,7 +1,7 @@
 user  root;
 worker_processes 2;
 daemon off;
-error_log stderr notice;
+error_log stderr info;
 backtrace_log /var/log/nginx/coredump.log;
 
 pid /var/run/nginx.pid;
@@ -17,6 +17,7 @@ http {
     lua_shared_dict settings 50m;
     lua_shared_dict wsettings 50m;
     lua_shared_dict upstreams 50m;
+    lua_shared_dict upstream_cached 50m;
     lua_shared_dict locked 100k;
     #dyups_trylock off;
     	
@@ -31,6 +32,20 @@ http {
     	})
     }
     
+    server {
+        listen 8088;
+        location / {
+            return 200 "8088";
+        }
+    }
+        
+    server {
+        listen 8089;
+        location / {
+            return 200 "8089";
+        }
+    }
+            
 	server {
 		listen 8001;
 		listen 80;

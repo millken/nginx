@@ -37,7 +37,7 @@ elif cmd == "loadtest":
 elif cmd == "test2redis":
 	count = 1
 	while count <= 100000:
-		settings = dict(gzip="on", server_type=0, upstream="server 127.0.0.1:81;")
+		settings = dict(gzip="on", server_type=0, upstream="server 127.0.0.1:8088;")
 		redis.set("site_" + "www." + str(count) + ".com", json.dumps(settings) )
 		count += 1
 	sys.exit()
