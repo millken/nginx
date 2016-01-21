@@ -25,6 +25,9 @@ elif cmd == "reload":
 elif cmd == "flush":
 	pub_msg = dict(event="flush_config")
 
+elif cmd == "remove":
+	pub_msg = dict(event="remove_config", hostname="www.100.com")
+
 elif cmd == "loadtest":
 	count = 1
 	while count <= 10000:

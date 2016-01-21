@@ -68,6 +68,7 @@ _M.events = {
 	load_config = {"lock", "connect_redis", "load_config", "unlock"},
 	reload_config = {"lock", "set_empty_config", "connect_redis", "load_config", "unlock"},
 	add_config = {"lock", "set_config", "unlock"},
+	remove_config = {"delete_config"}
 }
 
 _M.states = {
@@ -117,6 +118,15 @@ _M.states = {
 	set_config = function(self, body)
 		local bjson = cjson_decode(body)
 		self.set_config(bjson["hostname"], cjson_encode(bjson["sett"]))
+	end,
+
+	delete_config = function(self, body)
+		local bjson = cjson_decode(body)
+		local hostname = bjson["hostname"] or ""
+		dyups.delete(hostname)
+		settings:delete(hostname)
+		upstreams:delete(hostname)
+		upstream_cached:delete(hostname)
 	end,
 
 	set_empty_config = function(self)

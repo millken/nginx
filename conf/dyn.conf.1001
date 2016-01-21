@@ -1,5 +1,5 @@
 user  root;
-worker_processes 2;
+worker_processes 1;
 daemon off;
 error_log stderr info;
 backtrace_log /var/log/nginx/coredump.log;
@@ -40,9 +40,9 @@ http {
     }
         
     server {
-        listen 8089;
+        listen 81;
         location / {
-            return 200 "8089";
+            return 200 "81";
         }
     }
             

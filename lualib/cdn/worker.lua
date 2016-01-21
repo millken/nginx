@@ -17,25 +17,6 @@ local ngx_timer_at = ngx.timer.at
 local cjson_encode = cjson.encode
 local cjson_decode = cjson.decode
 
-local co_yield = coroutine.yield
-local co_create = coroutine.create
-local co_status = coroutine.status
-local co_resume = coroutine.resume
-local co_wrap = function(func)
-    local co = co_create(func)
-    if not co then
-        return nil, "could not create coroutine"
-    else
-        return function(...)
-            if co_status(co) == "suspended" then
-                return select(2, co_resume(co, ...))
-            else
-                return nil, "can't resume a " .. co_status(co) .. " coroutine"
-            end
-        end
-    end
-end
-
 local upstreams = ngx.shared.upstreams
 local settings = ngx.shared.settings
 local wsettings = ngx.shared.wsettings
@@ -68,7 +49,6 @@ function _M.rewrite(self)
 
 		for _, k in pairs(wsettings:get_keys()) do
 		    local from, to, err = ngx_re_find(ngx_var.host, k)
-		    ngx_log(ngx_INFO, "k : " .. k)
 		    if from then
 		        ngx_var.hostgroup = wsettings:get(k)
 		    else
@@ -96,22 +76,6 @@ function _M.rewrite(self)
 				dyups.update(ngx_var.hostgroup, ups)
 				ngx_log(ngx_INFO, "load upstream : ", ngx_var.hostgroup, ups)
 			end
-		end
-	end
-end
-
-function _M.consumer(co)
-	local events = events_mod:new()
-	while true do
-		local ok, value = co_resume(co)
-		if not ok then
-			break
-		end
-		if not events:states_locked() then
-			local subs = cjson.decode(value)
-			events:e( subs["event"], value )
-		else
-			ngx_log(ngx_INFO, "states locked, maybe wait more second")
 		end
 	end
 end
@@ -144,22 +108,17 @@ function _M.start(self, options)
 				events:e "load_config"
 			end
 			redis:subscribe("cdn.event")
-			local co = co_create(function () 
-				while true do
-					local msg, err = redis:read_reply()
-					if not msg then
-						ngx_log(ngx_ERR,"ERR:"..err)
-						break
-					end
-					ngx_log(ngx_INFO, "redis reply: " .. cjson.encode(msg))
-					
-					--local subs = cjson.decode(msg[3])
-					
-					--events:e( subs["event"], msg[3] )
-					co_yield(msg[3], nil)
+			while true do
+				local msg, err = redis:read_reply()
+				if not msg then
+					ngx_log(ngx_ERR,"ERR:"..err)
+					break
 				end
-			end)
-			self.consumer(co)
+				ngx_log(ngx_DEBUG, "redis reply: " .. cjson.encode(msg))
+				local subs = cjson.decode(msg[3])
+				
+				events:e( subs["event"], msg[3] )
+			end
 			locked:set("worker", 0)
 
 		end
