@@ -127,6 +127,14 @@ _M.states = {
 	end,
 }
 
+function _M.states_locked()
+	if locked:get("states") == 1 then
+		return true
+	else
+		return false
+	end
+end
+
 function _M.e(self, event, ...)
     ngx_log(ngx_INFO, "#e: ", event)
 	local events = self.events[event]

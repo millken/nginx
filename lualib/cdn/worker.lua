@@ -17,6 +17,25 @@ local ngx_timer_at = ngx.timer.at
 local cjson_encode = cjson.encode
 local cjson_decode = cjson.decode
 
+local co_yield = coroutine.yield
+local co_create = coroutine.create
+local co_status = coroutine.status
+local co_resume = coroutine.resume
+local co_wrap = function(func)
+    local co = co_create(func)
+    if not co then
+        return nil, "could not create coroutine"
+    else
+        return function(...)
+            if co_status(co) == "suspended" then
+                return select(2, co_resume(co, ...))
+            else
+                return nil, "can't resume a " .. co_status(co) .. " coroutine"
+            end
+        end
+    end
+end
+
 local upstreams = ngx.shared.upstreams
 local settings = ngx.shared.settings
 local wsettings = ngx.shared.wsettings
@@ -81,6 +100,22 @@ function _M.rewrite(self)
 	end
 end
 
+function _M.consumer(co)
+	local events = events_mod:new()
+	while true do
+		local ok, value = co_resume(co)
+		if not ok then
+			break
+		end
+		if not events:states_locked() then
+			local subs = cjson.decode(value)
+			events:e( subs["event"], value )
+		else
+			ngx_log(ngx_INFO, "states locked, maybe wait more second")
+		end
+	end
+end
+
 function _M.start(self, options)
     local options = setmetatable(options, { __index = DEFAULT_OPTIONS })
 
@@ -109,17 +144,22 @@ function _M.start(self, options)
 				events:e "load_config"
 			end
 			redis:subscribe("cdn.event")
-			while true do
-				local msg, err = redis:read_reply()
-				if not msg then
-					ngx_log(ngx_ERR,"ERR:"..err)
-					break
+			local co = co_create(function () 
+				while true do
+					local msg, err = redis:read_reply()
+					if not msg then
+						ngx_log(ngx_ERR,"ERR:"..err)
+						break
+					end
+					ngx_log(ngx_INFO, "redis reply: " .. cjson.encode(msg))
+					
+					--local subs = cjson.decode(msg[3])
+					
+					--events:e( subs["event"], msg[3] )
+					co_yield(msg[3], nil)
 				end
-				ngx_log(ngx_INFO, "redis reply: " .. cjson.encode(msg))
-				local subs = cjson.decode(msg[3])
-				
-				events:e( subs["event"], msg[3] )
-			end
+			end)
+			self.consumer(co)
 			locked:set("worker", 0)
 
 		end
