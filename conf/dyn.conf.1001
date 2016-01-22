@@ -33,9 +33,9 @@ http {
     }
     
     server {
-        listen 8088;
+        listen 82;
         location / {
-            return 200 "8088";
+            return 200 "82";
         }
     }
         

@@ -25,8 +25,13 @@ elif cmd == "reload":
 elif cmd == "flush":
 	pub_msg = dict(event="flush_config")
 
+elif cmd == "add":
+	settings = dict(gzip="on", server_type=0, upstream=" sticky cookie srv_id expires=1h domain=.example.com path=/;server 127.0.0.1:81; server 127.0.0.1:82;")
+	pub_msg = dict(event="add_config", hostname="www.test.com", sett=settings)
+
 elif cmd == "remove":
-	pub_msg = dict(event="remove_config", hostname="www.100.com")
+	pub_msg = dict(event="remove_config", hostname="www.test.com")
+
 
 elif cmd == "loadtest":
 	count = 1
