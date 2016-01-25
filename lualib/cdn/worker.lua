@@ -80,6 +80,9 @@ function _M.rewrite(self)
 	end
 end
 
+function _M.access(self)
+end
+
 function _M.start(self, options)
     local options = setmetatable(options, { __index = DEFAULT_OPTIONS })
 
