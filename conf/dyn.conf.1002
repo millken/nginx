@@ -17,6 +17,7 @@ http {
     lua_shared_dict itesty_limit 100k;
     lua_shared_dict blocked_iplist 10m;
     lua_shared_dict req_metrics 10m;	
+    lua_shared_dict req_iplist 10m;	    
 	access_by_lua_file /home/github/tengcdn/lualib/cdn/access.lua;
     
     server {
