@@ -1,0 +1,137 @@
+user  root;
+worker_processes 1;
+daemon off;
+error_log stderr info;
+backtrace_log /var/log/nginx/coredump.log;
+
+pid /var/run/nginx.pid;
+
+events {
+    worker_connections 1024;
+}
+
+http {
+	lua_code_cache off;
+	lua_package_path '/home/github/tengcdn/lualib/?.lua;;';
+	lua_package_cpath '/home/github/tengcdn/lualib/?.so;;';
+    lua_shared_dict stats 10m;
+    
+    server {
+        listen 82;
+        location / {
+            return 200 "82";
+        }
+    }
+        
+    server {
+        listen 81;
+        location / {
+
+			content_by_lua_block {
+ffi = require("ffi")
+ffi.cdef[[
+	typedef long time_t;
+ 
+ 	typedef struct timeval {
+		time_t tv_sec;
+		time_t tv_usec;
+	} timeval;
+ 
+	int gettimeofday(struct timeval* t, void* tzp);
+]]
+ 
+gettimeofday_struct = ffi.new("timeval")
+
+local function gettimeofday()
+ 	ffi.C.gettimeofday(gettimeofday_struct, nil)
+ 	return tonumber(gettimeofday_struct.tv_sec) * 1000000 + tonumber(gettimeofday_struct.tv_usec)
+end
+
+local t0 = gettimeofday()
+local stats = ngx.shared.stats
+local i
+for i = 1,1000000 do
+	stats:add("stats"..i, true)
+end
+local t1 = gettimeofday()
+ngx.say("dict add runtime: " .. (t1 - t0) / 1000 .. "ms")
+local function flush_all()
+	stats:flush_all()
+end
+local ok, err = ngx.timer.at(0, flush_all)
+if not ok then
+ 	ngx.log(ngx.ERR, "failed to create timer: ", err)
+end
+local t2 = gettimeofday()
+ngx.say("dict flush_all runtime: " .. (t2 - t1) / 1000 .. "ms")
+			}
+        }
+        
+        location /ctx-test {
+        	content_by_lua_block {
+-- https://www.cryptobells.com/properly-scoping-lua-nginx-modules-ngx-ctx/        	
+-- FFI call to get microsecond timing precision
+ffi = require("ffi")
+ffi.cdef[[
+	typedef long time_t;
+ 
+ 	typedef struct timeval {
+		time_t tv_sec;
+		time_t tv_usec;
+	} timeval;
+ 
+	int gettimeofday(struct timeval* t, void* tzp);
+]]
+ 
+gettimeofday_struct = ffi.new("timeval")
+
+local function gettimeofday()
+ 	ffi.C.gettimeofday(gettimeofday_struct, nil)
+ 	return tonumber(gettimeofday_struct.tv_sec) * 1000000 + tonumber(gettimeofday_struct.tv_usec)
+end
+
+local start = gettimeofday()
+
+local _
+for i = 1,1000000 do
+        ngx.ctx.foo = "bar"
+        _ = ngx.ctx.foo
+end
+
+local ctx_fin = gettimeofday()
+
+local stats = ngx.shared.stats
+local __
+for i = 1,1000000 do
+        stats:set("foo", 1)
+        __ = stats:get("foo")
+end
+
+local shm_fin = gettimeofday()
+
+local ___
+for i = 1,1000000 do
+        ___ = 1
+end
+
+local baseline_fin = gettimeofday()
+
+local ctx = ngx.ctx
+local ____
+for i = 1,1000000 do
+	ctx.bat = "baz"
+	____ = ctx.bat
+end
+ngx.ctx = ctx
+	
+local ctx_local_fin = gettimeofday()
+
+ngx.say("ngx.ctx runtime: " .. ctx_fin - start)
+ngx.say("ngx.dict runtime: " .. shm_fin - ctx_fin)
+ngx.say("baseline runtime: " .. baseline_fin - shm_fin)
+ngx.say("local ctx runtime: " .. ctx_local_fin - baseline_fin)        	
+        	}
+        }
+       
+    }
+}
