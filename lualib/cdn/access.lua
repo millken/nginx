@@ -53,16 +53,24 @@ local ip_interval = 5
 local ip_key = "total_ip"
 local ok, err = req_iplist:incr(ip_key, 0)
 if not ok then
-	req_iplist:flush_all()
+--	req_iplist:flush_all()
+	req_iplist:set(ip_key.."_time", ngx_time() + ip_interval, ip_interval)
     req_iplist:add(ip_key, 0, ip_interval)
 end
-local ok, err = req_iplist:safe_add(client_ip, 1)
-if ok then
-	req_iplist:incr(ip_key, 1)
+local ttl = 0
+local ip_val = req_iplist:get(ip_key.."_time")
+if ip_val then
+	ttl = ip_val - ngx_time()
+end
+if ttl > 0 then
+	local ok, err = req_iplist:safe_add(client_ip, true, ttl)
+	if ok then
+		req_iplist:incr(ip_key, 1)
+	end
 end
 
 ngx_log(ngx_INFO, "ip total: ", req_iplist:get(ip_key), "(", ip_interval, "s)", 
-"req total: ", req_metrics:get(req_key), "(", req_interval, "s)"
+"req total: ", req_metrics:get(req_key), "(", req_interval, "s)", ngx_time()
 )
 -- identify if request is page or resource
 if ngx_re_find(ngx.var.uri, "\\.(bmp|css|gif|ico|jpe?g|js|png|swf)$", "ioj") then
