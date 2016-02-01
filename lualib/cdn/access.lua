@@ -1,5 +1,5 @@
 local cjson = require "cjson"
-local cookie = require "cdn.cookie"
+local cookie = require "cookie"
 
 local   tostring, ipairs, pairs, type, tonumber, next, unpack =
         tostring, ipairs, pairs, type, tonumber, next, unpack
@@ -19,7 +19,7 @@ local blocked_iplist = ngx.shared.blocked_iplist
 local req_iplist = ngx.shared.req_iplist
 local req_metrics = ngx.shared.req_metrics
 
-local client_ip = ngx.var.remote_addr
+local client_ip = ngx_var.remote_addr
 local cookies = cookie.get()
 local COOKIE_NAME = "__waf_uid"
 local COOKIE_KEY = "xg0j21"
@@ -69,8 +69,17 @@ if ttl > 0 then
 	end
 end
 
+local hd_interval = 5
+local hd_key = ngx_var.http_host
+local hd_count, err = req_metrics:incr(hd_key, 1)
+if not hd_count then
+	req_metrics:add(hd_key, 1, hd_interval)
+end
+
+
 ngx_log(ngx_INFO, "ip total: ", req_iplist:get(ip_key), "(", ip_interval, "s)", 
-"req total: ", req_metrics:get(req_key), "(", req_interval, "s)", ngx_time()
+"req total: ", req_metrics:get(req_key), "(", req_interval, "s)",
+"http header total: ", req_metrics:get(hd_key), "(", hd_interval, "s)", ngx_time()
 )
 -- identify if request is page or resource
 if ngx_re_find(ngx.var.uri, "\\.(bmp|css|gif|ico|jpe?g|js|png|swf)$", "ioj") then

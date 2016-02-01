@@ -2,7 +2,6 @@ user  root;
 worker_processes 1;
 daemon off;
 error_log stderr info;
-#backtrace_log /var/log/nginx/coredump.log;
 
 pid /var/run/nginx.pid;
 
@@ -12,13 +11,15 @@ events {
 
 http {
 	lua_code_cache off;
-	lua_package_path '/home/github/tengcdn/lualib/cdn/?.lua;/home/github/tengcdn/lualib/?.lua;;';
+	#lua_package_path '/home/github/tengcdn/lualib/?.lua;;';
 	lua_package_cpath '/home/github/tengcdn/lualib/?.so;;';
     lua_shared_dict itesty_limit 100k;
     lua_shared_dict blocked_iplist 10m;
     lua_shared_dict req_metrics 10m;	
     lua_shared_dict req_iplist 10m;	    
-	access_by_lua_file /home/github/tengcdn/lualib/cdn/access.lua;
+	access_by_lua_block {
+		require("access")
+	}
     
     server {
         listen 82;

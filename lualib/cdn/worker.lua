@@ -1,7 +1,7 @@
 local cjson = require "cjson"
 local redis_mod = require "resty.redis"
 local dyups = require "ngx.dyups"
-local events_mod = require "cdn.events"
+local events_mod = require "events"
 
 local   tostring, ipairs, pairs, type, tonumber, next, unpack =
         tostring, ipairs, pairs, type, tonumber, next, unpack
