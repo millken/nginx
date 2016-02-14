@@ -18,7 +18,7 @@ http {
     lua_shared_dict req_metrics 10m;	
     lua_shared_dict req_iplist 10m;	    
 	access_by_lua_block {
-		require("access")
+		require "cdn.access"
 	}
     
     server {
