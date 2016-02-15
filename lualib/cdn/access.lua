@@ -1,5 +1,5 @@
 local cjson = require "cjson"
-local cookie = require "cookie"
+local cookie = require "cdn.cookie"
 
 local   tostring, ipairs, pairs, type, tonumber, next, unpack =
         tostring, ipairs, pairs, type, tonumber, next, unpack

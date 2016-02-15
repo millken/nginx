@@ -12,7 +12,7 @@ events {
 
 http {
 	lua_code_cache off;
-	lua_package_path '/home/github/tengcdn/lualib/cdn/?.lua;/home/github/tengcdn/lualib/?.lua;;';
+	lua_package_path '/home/github/tengcdn/lualib/?.lua;;';
 	lua_package_cpath '/home/github/tengcdn/lualib/?.so;;';
     lua_shared_dict itesty_limit 100k;
     lua_shared_dict blocked_iplist 10m;

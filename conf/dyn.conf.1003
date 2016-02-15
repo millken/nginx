@@ -37,6 +37,14 @@ http {
 			}
         }
         
+        location /test {
+			content_by_lua_block {
+				local test = require "cdn.test"
+				test.version()
+				ngx.say("done")
+			} 
+        }
+        
         location /limit {
 			access_by_lua_block {
 				local limits = require("resty.iresty_limits")

@@ -57,8 +57,8 @@ make
 buildReleaseNgx()
 {
 	cd $NGINX
-	export LUAJIT_INC=/usr/local/luajit-2.0.1/include/luajit-2.0/
-	export LUAJIT_LIB=/usr/local/luajit-2.0.1/lib/
+	export LUAJIT_INC=/usr/local/include/luajit-2.1/
+	export LUAJIT_LIB=/usr/local/lib
 	./configure --prefix=/nginx   \
 	--with-http_ssl_module \
 	--without-http_fastcgi_module \
@@ -81,7 +81,7 @@ buildReleaseNgx()
 	--add-module=../headers-more-nginx-module \
 	--with-ld-opt="-ltcmalloc_minimal -L/home/github/tengcdn/lualib -Wl,--whole-archive -lcdn -Wl,--no-whole-archive" \
 	--with-cc-opt="-O2"
-sed -i 's#-L/usr/local/luajit-2.0.1/lib/ -lluajit-5.1#/usr/local/lib/libluajit-5.1.a#' objs/Makefile #静态编译
+sed -i 's#-L/usr/local/lib -lluajit-5.1#/usr/local/lib/libluajit-5.1.a#' objs/Makefile #静态编译
 sed -i 's#HTTP_AUX_FILTER_MODULES#HTTP_MODULES#' ../lua-upstream-cache-nginx-module/config #fix config
 make
 	
@@ -123,11 +123,11 @@ for f in $lualib/cdn/*.lua; do
 	r2="${BASH_REMATCH[2]}"
 	\cp $f $temp_dir/${r1}_${r2}.lua
 	echo $r1/$r2.lua;
-    luajit -bg $temp_dir/${r1}_${r2}.lua $temp_dir/${r1}_${r2}.o
+    luajit-2.1.0-beta1 -b $temp_dir/${r1}_${r2}.lua $temp_dir/${r1}_${r2}.o
 done
 rm -f $lualib/libcdn.a
 ar rcus $lualib/libcdn.a $temp_dir/*.o
-#rm -rf $temp_dir
+rm -rf $temp_dir
 }
 resetNgx()
 {
