@@ -11,12 +11,19 @@ events {
 
 http {
 	lua_code_cache off;
-	#lua_package_path '/home/github/tengcdn/lualib/?.lua;;';
+	lua_package_path '/home/github/tengcdn/lualib/?.lua;;';
 	lua_package_cpath '/home/github/tengcdn/lualib/?.so;;';
     lua_shared_dict itesty_limit 100k;
-    lua_shared_dict blocked_iplist 10m;
+    lua_shared_dict ip_blacklist 10m;
+    lua_shared_dict ip_whitelist 10m;
     lua_shared_dict req_metrics 10m;	
-    lua_shared_dict req_iplist 10m;	    
+    lua_shared_dict req_iplist 10m;
+    
+    init_by_lua_block {
+    	local log = require("cdn.log")
+    	local logger = log.new()
+    }
+    	    
 	access_by_lua_block {
 		require "cdn.access"
 	}

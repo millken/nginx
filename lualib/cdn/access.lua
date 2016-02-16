@@ -15,7 +15,8 @@ local ngx_now = ngx.now
 local ngx_exit = ngx.exit
 local ngx_md5 = ngx.md5
 local ngx_time = ngx.time
-local blocked_iplist = ngx.shared.blocked_iplist
+local ip_blacklist = ngx.shared.ip_blacklist
+local ip_whitelist = ngx.shared.ip_whitelist
 local req_iplist = ngx.shared.req_iplist
 local req_metrics = ngx.shared.req_metrics
 
@@ -24,8 +25,13 @@ local cookies = cookie.get()
 local COOKIE_NAME = "__waf_uid"
 local COOKIE_KEY = "xg0j21"
 
-if blocked_iplist:get(client_ip) ~= nil then
-	if blocked_iplist:get(client_ip) >= ngx_now() then
+if ip_whitelist:get(client_ip) ~= nil then
+	if ip_whitelist:get(client_ip) >= ngx_now() then
+		return
+	end
+end
+if ip_blacklist:get(client_ip) ~= nil then
+	if ip_blacklist:get(client_ip) >= ngx_now() then
 		ngx_exit(444)
 	end
 end

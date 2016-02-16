@@ -1,5 +1,5 @@
 user  root;
-worker_processes 1;
+worker_processes 2;
 daemon off;
 error_log stderr info;
 #backtrace_log /var/log/nginx/coredump.log;
@@ -15,11 +15,23 @@ http {
 	lua_package_path '/home/github/tengcdn/lualib/?.lua;;';
 	lua_package_cpath '/home/github/tengcdn/lualib/?.so;;';
     lua_shared_dict itesty_limit 100k;
-    lua_shared_dict blocked_iplist 10m;
+    lua_shared_dict ip_whitelist 10m;
+    lua_shared_dict ip_blacklist 10m;
     lua_shared_dict req_metrics 10m;	
     lua_shared_dict req_iplist 10m;	    
 	access_by_lua_file /home/github/tengcdn/lualib/cdn/access.lua;
     
+    init_by_lua_block {
+		local config = require "cdn.config"
+		config:set("log.status", true)
+		config:set("log.level", 1)
+		
+		local logger = require "resty.logger"
+		local log = logger:open("/tmp/cdn.log")
+		log:set_level(0)
+		config:set("log.file", log)
+    }
+        
     server {
         listen 82;
         location / {
@@ -32,8 +44,27 @@ http {
         location / {
 
 			content_by_lua_block {
-				ngx.say("81")
+                local logger = require "resty.logger"
+                local buss1 = logger:open("/tmp/a/a/a/cdn.log")
+                --buss1:set_level(logger.INFO)
+                buss1:info("hello world")
+				ngx.say("ngx.DEBUG=", ngx.DEBUG, "ngx.INFO=", ngx.INFO, "ngx.NOTICE=", ngx.NOTICE, "ngx.WARN=", ngx.WARN, "ngx.ERR=", ngx.ERR)
 			}
+        }
+        
+        location /test {
+        	access_by_lua_block {
+        		local config = require "cdn.config"
+        		config:set("test", "miss me !")
+        	}
+	        content_by_lua_block {
+	        	local log = require "cdn.log"
+	        	log:info("info")
+	        	log:debug("debug")
+	        	log:error("error")
+	        	local config = require "cdn.config"
+	        	ngx.say(config:get("test"))
+	        }
         }
         
         location /limit {

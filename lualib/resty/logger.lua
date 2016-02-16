@@ -10,8 +10,8 @@ local bor = bit.bor
 local setmetatable = setmetatable
 local localtime 	= ngx.localtime()
 local ngx 			= ngx
-local type 			= type
-
+local   tostring, ipairs, pairs, type, tonumber, next, unpack =
+        tostring, ipairs, pairs, type, tonumber, next, unpack
 
 ffi.cdef[[
 int write(int fd, const char *buf, int nbyte);
@@ -32,60 +32,51 @@ local LVL_INFO  = 2
 local LVL_ERROR = 3
 local LVL_NONE  = 999
 
-module(...)
-
-_VERSION = '0.1'
+local _M = {
+    _VERSION = '0.01',
+}
 
 local mt = { __index = _M }
 
-function new(self, log_type, logfile)
+function _M.open(self, logfile)
 	local log_level, log_fd = nil
 
-	local level = nil
-	if 'debug' == log_type then 
-		level = LVL_DEBUG
-	elseif 'info' == log_type then 
-		level = LVL_INFO
-	elseif 'error' == log_type then 
-		level = LVL_ERROR
-	else 
-		level = LVL_NONE
+	local level = LVL_NONE
+	local fd = C.open(logfile, bor(O_RDWR, O_CREAT, O_APPEND), bor(S_IRWXU, S_IRGRP, S_IROTH)) 
+	if fd == -1 then
+		ngx.log(ngx.ERR, "open log file " .. logfile .. " failed, errno: " .. tostring(ffi.errno()))
 	end
-
 	return setmetatable({
 		log_level = level,
-		log_fd = C.open(logfile, bor(O_RDWR, O_CREAT, O_APPEND), bor(S_IRWXU, S_IRGRP, S_IROTH)),
+		log_fd = fd,
 	},mt)
 end
 
+function _M.set_level(self, level)
+	self.log_level = level
+end
 
-function debug(self, msg)
+function _M.debug(self, msg)
 	if self.log_level > LVL_DEBUG then return end;
 
-	local c = localtime .. "|" .."D" .. "|" .. msg .. "\n";
+	local c = localtime .. " [DEBUG] " .. msg .. "\n";
 	C.write(self.log_fd, c, #c);
 end
 
-function info(self, msg)
+function _M.info(self, msg)
 	if self.log_level > LVL_INFO then return end;
 
-	local c = localtime .. "|" .."I" .. "|" .. msg .. "\n";
+	local c = localtime .. " [INFO] " .. msg .. "\n";
 	C.write(self.log_fd, c, #c);
 end
 
 
-function error(self, msg)
+function _M.error(self, msg)
 	if self.log_level > LVL_ERROR then return end;
 
-	local c = localtime .. "|" .."E" .. "|" .. msg .. "\n";
+	local c = localtime .. " [ERROR] " .. msg .. "\n";
 	C.write(self.log_fd, c, #c);
 end
 
-local class_mt = { 
-	-- to prevent use of casual module global variables
-	__newindex = function (table, key, val)
-		error('attempt to write to undeclared variable "' .. key .. '"')
-	end 
-}
+return _M
 
-setmetatable(_M, class_mt)
