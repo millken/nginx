@@ -19,3 +19,6 @@
 [submodule "headers-more-nginx-module"]
 	path = headers-more-nginx-module
 	url = https://github.com/openresty/headers-more-nginx-module.git
+[submodule "stream-lua-nginx-module"]
+	path = stream-lua-nginx-module
+	url = https://github.com/openresty/stream-lua-nginx-module.git

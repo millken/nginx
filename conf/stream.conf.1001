@@ -1,0 +1,37 @@
+user  root;
+worker_processes 1;
+daemon off;
+error_log stderr info;
+
+pid /var/run/nginx.pid;
+
+events {
+    worker_connections 1024;
+}
+
+stream {
+	lua_check_client_abort on;
+    # define a TCP server listening on the port 1234:
+    server {
+        listen 1234;
+
+        content_by_lua_block {
+			 local function my_cleanup()
+				 -- custom cleanup work goes here, like cancelling a pending DB transaction
+
+				 -- now abort all the "light threads" running in the current request handler
+				 ngx.exit(499)
+			 end
+
+			 local ok, err = ngx.on_abort(my_cleanup)
+			 if not ok then
+				 ngx.log(ngx.ERR, "failed to register the on_abort callback: ", err)
+				 ngx.exit(500)
+			 end        
+        	while true do
+        		ngx.sleep(1)
+            	ngx.say("Hello, Lua!" .. ngx.time())
+            end
+        }
+    }
+}

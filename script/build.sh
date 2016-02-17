@@ -23,9 +23,9 @@ usage()
 buildNgx()
 {
 	cd $NGINX
-	export LUAJIT_INC=/usr/local/luajit-2.0.1/include/luajit-2.0/
-	export LUAJIT_LIB=/usr/local/luajit-2.0.1/lib/
-	./configure --prefix=/nginx   \
+	export LUAJIT_INC=/usr/local/include/luajit-2.1/
+	export LUAJIT_LIB=/usr/local/lib
+	./auto/configure --prefix=/nginx   \
 	--with-http_ssl_module \
 	--without-http_fastcgi_module \
 	--without-http_uwsgi_module \
@@ -40,11 +40,15 @@ buildNgx()
 	--without-mail_imap_module \
 	--without-mail_smtp_module \
 	--with-pcre \
+	--with-pcre \
+    --with-stream \
+    --with-stream_ssl_module \
 	--add-module=../ngx_devl_kit \
 	--add-module=../lua-nginx-module \
 	--add-module=../ngx_http_dyups_module \
 	--add-module=../lua-upstream-cache-nginx-module \
 	--add-module=../headers-more-nginx-module \
+	--add-module=../stream-lua-nginx-module \
 	--add-module=../ngx_http_process_coredump \
 	--with-debug \
 	--with-cc-opt="-O0"
@@ -59,7 +63,7 @@ buildReleaseNgx()
 	cd $NGINX
 	export LUAJIT_INC=/usr/local/include/luajit-2.1/
 	export LUAJIT_LIB=/usr/local/lib
-	./configure --prefix=/nginx   \
+	./auto/configure --prefix=/nginx   \
 	--with-http_ssl_module \
 	--without-http_fastcgi_module \
 	--without-http_uwsgi_module \
@@ -74,6 +78,8 @@ buildReleaseNgx()
 	--without-mail_imap_module \
 	--without-mail_smtp_module \
 	--with-pcre \
+    --with-stream \
+    --with-stream_ssl_module \
 	--add-module=../ngx_devl_kit \
 	--add-module=../lua-nginx-module \
 	--add-module=../ngx_http_dyups_module \
