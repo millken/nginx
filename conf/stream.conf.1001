@@ -11,27 +11,54 @@ events {
 
 stream {
 	lua_check_client_abort on;
+
     # define a TCP server listening on the port 1234:
     server {
         listen 1234;
 
         content_by_lua_block {
-			 local function my_cleanup()
-				 -- custom cleanup work goes here, like cancelling a pending DB transaction
-
-				 -- now abort all the "light threads" running in the current request handler
-				 ngx.exit(499)
+        	local running = true
+			 local function cleanup()
+				 running = false
 			 end
 
-			 local ok, err = ngx.on_abort(my_cleanup)
+			 local ok, err = ngx.on_abort(cleanup)
 			 if not ok then
 				 ngx.log(ngx.ERR, "failed to register the on_abort callback: ", err)
 				 ngx.exit(500)
-			 end        
-        	while true do
-        		ngx.sleep(1)
-            	ngx.say("Hello, Lua!" .. ngx.time())
+			 end
+				local sock = assert(ngx.req.socket(true)) 
+        	while running do
+				local data
+				req_data, err = sock:receive()  -- read a line from downstream
+				if not req_data then 
+					ngx.log(ngx.ERR, err)
+					break
+				end 
+					ngx.log(ngx.INFO, "req data:", req_data)
+					sock:send(req_data)
+				local settings = ngx.shared.settings
+				settings:set("test", "stream lua")					
+        		--ngx.sleep(1)
+            	--ngx.say("Hello, Lua!" .. ngx.time())
             end
         }
     }
 }
+
+http {
+	lua_code_cache off;
+    lua_shared_dict settings 50m;
+	server {
+		listen 8001;
+    	
+		location / {
+			content_by_lua_block {
+				local settings = ngx.shared.settings
+				--settings:set("test", "http lua")
+				local test = settings:get("test")
+				ngx.say(test)
+			} 	   
+		} 	
+    }
+}    
