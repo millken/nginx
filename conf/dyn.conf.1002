@@ -67,6 +67,16 @@ http {
 	        }
         }
         
+		location /sqlite {
+			content_by_lua_block {
+				local sql = require "sqlite3"
+				local cjson = require "cjson"
+				local conn = sql.open("/home/millken/rqlite/node.2/db.sqlite")
+				local table,n = conn:exec("SELECT * FROM foo")
+				ngx.say( n, cjson.encode(table.name))
+			} 		
+		}
+		        
         location /limit {
 			access_by_lua_block {
 				local limits = require("resty.iresty_limits")

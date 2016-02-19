@@ -59,6 +59,7 @@ http {
 				local test = settings:get("test")
 				ngx.say(test)
 			} 	   
-		} 	
+		}
+		
     }
 }    

@@ -1,0 +1,1 @@
+INSERT INTO "server" ("id", "servername", "setting")VALUES(2,"www.test1.com",'{"gzip": 1, "upstream": "server 127.0.0.1:81; server 127.0.0.1:82;"}');
