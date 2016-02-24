@@ -1,9 +1,9 @@
-curl -L -XPOST localhost:4001/db?pretty -d '
 CREATE TABLE "server" ("id" INTEGER DEFAULT NULL PRIMARY KEY AUTOINCREMENT,"servername" TEXT DEFAULT NULL,"setting" TEXT DEFAULT NULL,"created_at" INTEGER NOT NULL  DEFAULT CURRENT_TIMESTAMP,UNIQUE (servername));
 
-INSERT INTO "server" VALUES(1,"www.test.com","{\"gzip\": 1, \"upstream\": \"server 127.0.0.1:81; server 127.0.0.1:82;\"}","2015-04-14 00:29:16");
+INSERT INTO "server" (servername, setting)VALUES("www.test.com",'{"gzip": 1, "upstream": "server 127.0.0.1:81; server 127.0.0.1:82;"}');
 
 CREATE TABLE "event" ("id" INTEGER DEFAULT NULL PRIMARY KEY AUTOINCREMENT,"servername" TEXT DEFAULT NULL REFERENCES "server" ("servername"),"event" TEXT DEFAULT NULL,"created_at" INTEGER NOT NULL  DEFAULT CURRENT_TIMESTAMP,UNIQUE (servername));
 
-INSERT INTO "event" VALUES(1, "www.test.com", "add_config","2015-04-14 00:29:16");'
+INSERT INTO "event" (servername, event)VALUES("www.test.com", "add_config");
+
 

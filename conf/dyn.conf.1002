@@ -71,9 +71,9 @@ http {
 			content_by_lua_block {
 				local sql = require "sqlite3"
 				local cjson = require "cjson"
-				local conn = sql.open("/home/millken/rqlite/node.2/db.sqlite")
-				local table,n = conn:exec("SELECT * FROM foo")
-				ngx.say( n, cjson.encode(table.name))
+				local conn = sql.open("/home/millken/rqlite/node.2/db.sqlite3")
+				local table,n = conn:exec("SELECT * FROM server")
+				ngx.say( n, cjson.encode(table.servername))
 			} 		
 		}
 		        
