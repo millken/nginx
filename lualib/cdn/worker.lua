@@ -1,11 +1,14 @@
 local cjson = require "cjson"
 local redis_mod = require "resty.redis"
+
 local dyups = require "ngx.dyups"
-local events_mod = require "events"
+local events_mod = require "cdn.events"
+local config = require "cdn.config"
+local log = require "cdn.log"
 
 local   tostring, ipairs, pairs, type, tonumber, next, unpack =
         tostring, ipairs, pairs, type, tonumber, next, unpack
-        
+local open = io.open   
 local ngx_log = ngx.log
 local ngx_var = ngx.var
 local ngx_re_find = ngx.re.find
@@ -34,15 +37,14 @@ local DEFAULT_OPTIONS = {
     interval = 10,
 }
 
-
-function _M.new(self)
- 	local config = {
-        origin_mode     = _M.ORIGIN_MODE_NORMAL,
-
-        upstream_connect_timeout = 500,
-    }
-    return setmetatable({ config = config }, mt)
+local function file_exists(path)
+	local file = open(path, "rb")
+    if not file then return nil end
+    --local content = file:read "*a"
+    file:close()
+	return true
 end
+
 
 function _M.rewrite(self)
 	if (settings:get(ngx_var.host) == nil) then
@@ -80,60 +82,42 @@ function _M.rewrite(self)
 	end
 end
 
-function _M.access(self)
-end
-
 function _M.start(self, options)
     local options = setmetatable(options, { __index = DEFAULT_OPTIONS })
 
     local function worker()
-		if locked:get("worker") ~= 1 then
+			if locked:get("worker") ~= 1 then
 			locked:set("worker", 1)
-			local redis = redis_mod:new()
-			local events = events_mod:new()
-			local ok, err = redis:connect("127.0.0.1",6379)
-			if not ok then
-				ngx_log(ngx_ERR, "could not connect to Redis: ", err)
+			local sqlitefile = config:get('db.file')
+			if not file_exists(sqlitefile) then
+				log:error("can not open db file : ", sqlitefile)
 
 				locked:set("worker", 0)
 				local ok, err = ngx_timer_at(options.interval, worker)
 				if not ok then
-					ngx_log(ngx_ERR, "failed to run worker: ", err)
+					log:error("failed to run worker: ", err)
 				else
 					return ok
-				end
+				end			
 			end
 
-			ngx_log(ngx_INFO, "connected to redis done")
 			local ok, err = settings:safe_add("localhost", "")
 			if ok then
-				ngx_log(ngx_INFO, "loading config from redis")
-				events:e "load_config"
-			end
-			redis:subscribe("cdn.event")
-			while true do
-				local msg, err = redis:read_reply()
-				if not msg then
-					ngx_log(ngx_ERR,"ERR:"..err)
-					break
-				end
-				ngx_log(ngx_DEBUG, "redis reply: " .. cjson.encode(msg))
-				local subs = cjson.decode(msg[3])
-				
-				events:e( subs["event"], msg[3] )
+			    log:info("loading config from db")
+				--events:e "load_config"
 			end
 			locked:set("worker", 0)
-
+			log:debug("worker running")
 		end
 		
 		local ok, err = ngx_timer_at(options.interval, worker)
 		if not ok then
-			ngx_log(ngx_ERR, "failed to run worker: ", err)
+			log:error("failed to run worker: ", err)
 		end
 	end
 	local ok, err = ngx_timer_at(0, worker)
 	if not ok then
-		ngx_log(ngx_ERR, "failed to start worker: ", err)
+		log:error("failed to start worker: ", err)
 	end
 end
 

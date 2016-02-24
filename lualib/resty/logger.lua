@@ -8,7 +8,6 @@ local C = ffi.C
 local bor = bit.bor
 
 local setmetatable = setmetatable
-local localtime 	= ngx.localtime()
 local ngx 			= ngx
 local   tostring, ipairs, pairs, type, tonumber, next, unpack =
         tostring, ipairs, pairs, type, tonumber, next, unpack
@@ -59,14 +58,16 @@ end
 function _M.debug(self, msg)
 	if self.log_level > LVL_DEBUG then return end;
 
-	local c = localtime .. " [DEBUG] " .. msg .. "\n";
+	local localtime 	= ngx.localtime()
+	local c = localtime .. " [debug] " .. ngx.worker.pid() .. ": " .. msg .. "\n";
 	C.write(self.log_fd, c, #c);
 end
 
 function _M.info(self, msg)
 	if self.log_level > LVL_INFO then return end;
 
-	local c = localtime .. " [INFO] " .. msg .. "\n";
+	local localtime 	= ngx.localtime()
+	local c = localtime .. " [info] " .. ngx.worker.pid() .. ": " .. msg .. "\n";
 	C.write(self.log_fd, c, #c);
 end
 
@@ -74,7 +75,8 @@ end
 function _M.error(self, msg)
 	if self.log_level > LVL_ERROR then return end;
 
-	local c = localtime .. " [ERROR] " .. msg .. "\n";
+	local localtime 	= ngx.localtime()
+	local c = localtime .. " [error] " .. ngx.worker.pid() .. ": " .. msg .. "\n";
 	C.write(self.log_fd, c, #c);
 end
 

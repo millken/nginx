@@ -1,17 +1,13 @@
 local cjson = require "cjson"
 local redis_mod = require "resty.redis"
 local dyups = require "ngx.dyups"
-
+local sql = require "sqlite3"
 local   tostring, ipairs, pairs, type, tonumber, next, unpack =
         tostring, ipairs, pairs, type, tonumber, next, unpack
         
 local ngx_log = ngx.log
 local ngx_var = ngx.var
 local ngx_re_find = ngx.re.find
-local ngx_DEBUG = ngx.DEBUG
-local ngx_ERR = ngx.ERR
-local ngx_INFO = ngx.INFO
-local ngx_NOTICE = ngx.NOTICE
 local ngx_now = ngx.now
 local ngx_timer_at = ngx.timer.at
 local cjson_encode = cjson.encode

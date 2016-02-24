@@ -40,7 +40,6 @@ buildNgx()
 	--without-mail_imap_module \
 	--without-mail_smtp_module \
 	--with-pcre \
-	--with-pcre \
     --with-stream \
     --with-stream_ssl_module \
 	--add-module=../ngx_devl_kit \
