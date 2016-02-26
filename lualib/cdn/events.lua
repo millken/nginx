@@ -1,7 +1,10 @@
 local cjson = require "cjson"
+local config = require "cdn.config"
+local log = require "cdn.log"
+
 local redis_mod = require "resty.redis"
 local dyups = require "ngx.dyups"
-local sql = require "sqlite3"
+local sqlite3 = require "sqlite3"
 local   tostring, ipairs, pairs, type, tonumber, next, unpack =
         tostring, ipairs, pairs, type, tonumber, next, unpack
         
@@ -61,30 +64,13 @@ end
 
 _M.events = {
 	flush_config = {"lock", "set_empty_config", "unlock"},
-	load_config = {"lock", "connect_redis", "load_config", "unlock"},
+	load_config = {"lock", "load_config", "unlock"},
 	reload_config = {"lock", "set_empty_config", "connect_redis", "load_config", "unlock"},
 	add_config = {"lock", "set_config", "unlock"},
 	remove_config = {"delete_config"}
 }
 
 _M.states = {
-    connect_redis = function(self)
-        local redis_params
-		local host = self.config.redis
-		redis_params = {
-			host = host.host,
-			port = host.port,
-		}
-		ngx_log(ngx_INFO, "connecting to redis: ", host.host, ":", host.port)
-		local redis = redis_mod:new()
-		local ok, err = redis:connect(redis_params.host, redis_params.port)
-        if not ok then
-            ngx_log(ngx_ERR, "could not connect to redis: ", err)
-        else
-            self.redis = redis
-        end
-    end,
-
 	lock = function(self)
 		locked:set("states", 1)
 	end,
@@ -94,21 +80,15 @@ _M.states = {
 	end,
 
 	load_config = function(self)
-		local redis = self.redis
-		if not redis then
-			return nil, "not initialized"
-		end
+		local db = sqlite3.open(config:get('db.file'),  "ro")
+		local server, n = db:exec("SELECT * FROM server", "hk")
 		local t1 = ngx_now()
-		local sites = redis:keys("site_*")
-		if sites then
-			for _,host in ipairs(sites) do
-				local hostname = str_sub(host, 6)
-				local sett = redis:get(host)
-				self.set_config(hostname, sett)
-			end
+		local i
+		for i=1, n do
+			log:debug( server.servername[i] .. server.setting[i])
 		end
 		local t2 = ngx_now() - t1 
-		ngx_log(ngx_NOTICE , "load config cost time : ", t2)
+		ngx_log(ngx.NOTICE , "load config cost time : ", t2)
 	end,
 
 	set_config = function(self, body)
@@ -141,20 +121,20 @@ function _M.states_locked()
 	end
 end
 
-function _M.e(self, event, ...)
-    ngx_log(ngx_INFO, "#e: ", event)
+function _M.e(self, event)
+    log:info("#e: " .. event)
 	local events = self.events[event]
 	if not events then
         ngx_log(ngx_ERR, event, " is not defined.")
 	else
 		if type(events) == "table" then
 			for _, state in ipairs(events) do
-				ngx_log(ngx_DEBUG, "#t: ", state)
-				self.states[state](self, ...)
+				log:debug("#t: " .. state)
+				self.states[state](self)
 			end
 		else
-			ngx_log(ngx_DEBUG, "#t: ", events)
-			self.states[events](self, ...)
+			log:debug("#t: " .. events)
+			self.states[events](self)
 		end
     end
 end

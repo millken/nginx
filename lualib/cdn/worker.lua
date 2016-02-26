@@ -2,7 +2,7 @@ local cjson = require "cjson"
 local redis_mod = require "resty.redis"
 
 local dyups = require "ngx.dyups"
-local events_mod = require "cdn.events"
+local events = require "cdn.events"
 local config = require "cdn.config"
 local log = require "cdn.log"
 
@@ -104,10 +104,10 @@ function _M.start(self, options)
 			local ok, err = settings:safe_add("localhost", "")
 			if ok then
 			    log:info("loading config from db")
-				--events:e "load_config"
+				events:e("load_config")
 			end
 			locked:set("worker", 0)
-			log:debug("worker running")
+			--log:debug("worker running")
 		end
 		
 		local ok, err = ngx_timer_at(options.interval, worker)

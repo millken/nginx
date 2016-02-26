@@ -1,0 +1,75 @@
+user  root;
+worker_processes 1;
+daemon off;
+error_log stderr info;
+backtrace_log /var/log/nginx/coredump.log;
+
+pid /var/run/nginx.pid;
+
+events {
+    worker_connections 1024;
+}
+
+http {
+	lua_code_cache off;
+	lua_package_path '/home/github/tengcdn/lualib/?.lua;;';
+	lua_package_cpath '/home/github/tengcdn/lualib/?.so;;';
+    lua_shared_rbtree settings 1000m;
+    
+    server {
+        listen 82;
+        location / {
+            return 200 "82";
+        }
+    }
+        
+    server {
+        listen 81;
+        location / {
+
+			content_by_lua_block {
+ffi = require("ffi")
+ffi.cdef[[
+	typedef long time_t;
+ 
+ 	typedef struct timeval {
+		time_t tv_sec;
+		time_t tv_usec;
+	} timeval;
+ 
+	int gettimeofday(struct timeval* t, void* tzp);
+]]
+ 
+gettimeofday_struct = ffi.new("timeval")
+
+local function gettimeofday()
+ 	ffi.C.gettimeofday(gettimeofday_struct, nil)
+ 	return tonumber(gettimeofday_struct.tv_sec) * 1000000 + tonumber(gettimeofday_struct.tv_usec)
+end
+local cmp = function(s1, s2)
+    if s1 > s2 then
+        return 1
+
+    elseif s1 < s2 then
+        return -1
+
+    else
+        return 0
+    end 
+end
+local t0 = gettimeofday()
+local shrbtree = require("shrbtree")
+local settings = shrbtree.settings
+local i
+for i = 1,10000000 do
+	local success, msg = settings:insert{"stats"..i, true, cmp}
+	if not success then
+        ngx.log(ngx.ERR, msg)
+    end
+end
+local t1 = gettimeofday()
+ngx.say("rbtree insert runtime: " .. (t1 - t0) / 1000 .. "ms")
+			}
+        }
+ }       
+}
