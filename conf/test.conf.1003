@@ -14,7 +14,6 @@ http {
 	lua_code_cache off;
 	lua_package_path '/home/github/tengcdn/lualib/?.lua;;';
 	lua_package_cpath '/home/github/tengcdn/lualib/?.so;;';
-    lua_shared_rbtree settings 1000m;
     
     server {
         listen 82;
@@ -58,32 +57,26 @@ local cmp = function(s1, s2)
     end 
 end
 local t0 = gettimeofday()
-local shrbtree = require("shrbtree")
-local cjson = require("cjson")
-local settings = shrbtree.settings
+local cmsgpack = require("cmsgpack")
 local i
 local data = {
 gzip = true,
 servername = "www.test.com",
 upstream=" sticky cookie srv_id expires=1h domain=.example.com path=/;server 127.0.0.1:81; server 127.0.0.1:82;",
 }
-for i = 1,1000000 do
-	local success, msg = settings:insert{"stats"..i, data, cmp}
-	if not success then
-        --ngx.log(ngx.ERR, msg)
-    end
+local data1 = cmsgpack.pack(data)
+local ____
+for i = 1,10000000 do
+	____ = cmsgpack.pack(data)
 end
 local t1 = gettimeofday()
 
-ngx.say("rbtree insert runtime: " .. (t1 - t0) / 1000 .. "ms")
-local value, msg = settings:get{"stats32", cmp}
-if value == nil then
-    return ngx.say(msg)
-end
---ngx.say(value.servername)
-ngx.say(cjson.encode(value))
+ngx.say("cmsgpack pack runtime: " .. (t1 - t0) / 1000 .. "ms")
 local t2 = gettimeofday()
-ngx.say("rbtree get runtime: " .. (t2 - t1) / 1000 .. "ms")
+for i = 1,10000000 do
+	____ = cmsgpack.unpack(data1)
+end
+ngx.say("cmsgpack unpack runtime: " .. (t2 - t1) / 1000 .. "ms")
 			}
         }
  }       

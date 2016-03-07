@@ -1,5 +1,6 @@
 local logger = require "resty.logger"
 local config = require "cdn.config"
+local table_concat = table.concat
 local ngx = ngx
 local _M = {
     _VERSION = '0.01',
@@ -19,7 +20,7 @@ function _M.info(self, ... )
 
 		local filer = config:get('log.file')
 		if filer then
-			filer:info(...)
+			filer:info(table_concat({...}))
 		else
 			ngx.log(ngx.INFO, ...)
 		end
@@ -33,7 +34,7 @@ function _M.debug(self, ... )
 
 		local filer = config:get('log.file')
 		if filer then
-			filer:debug(...)
+			filer:debug(table_concat({...}))
 		else
 			ngx.log(ngx.DEBUG, ...)
 		end
@@ -47,7 +48,7 @@ function _M.error(self, ... )
 	
 		local filer = config:get('log.file')
 		if filer then
-			filer:error(...)
+			filer:error(table_concat({...}))
 		else
 			ngx.log(ngx.ERR, ...)
 		end

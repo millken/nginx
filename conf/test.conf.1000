@@ -14,7 +14,7 @@ http {
 	lua_code_cache off;
 	lua_package_path '/home/github/tengcdn/lualib/?.lua;;';
 	lua_package_cpath '/home/github/tengcdn/lualib/?.so;;';
-    lua_shared_dict stats 10m;
+    lua_shared_dict stats 100m;
     
     server {
         listen 82;
@@ -50,7 +50,7 @@ end
 local t0 = gettimeofday()
 local stats = ngx.shared.stats
 local i
-for i = 1,10000000 do
+for i = 1,1000000 do
 	stats:add("stats"..i, true)
 end
 local t1 = gettimeofday()

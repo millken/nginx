@@ -5,6 +5,7 @@ local dyups = require "ngx.dyups"
 local events = require "cdn.events"
 local config = require "cdn.config"
 local log = require "cdn.log"
+local tlds = require "cdn.tlds"
 
 local   tostring, ipairs, pairs, type, tonumber, next, unpack =
         tostring, ipairs, pairs, type, tonumber, next, unpack
@@ -45,8 +46,16 @@ local function file_exists(path)
 	return true
 end
 
-
 function _M.rewrite(self)
+	local topleveldomain = tlds:domain(ngx_var.host)
+	if topleveldomain == nil then 
+		ngx.exit(404)
+	end
+	local setting = settings:get(topleveldomain)
+	if setting == nil then
+		log:info("server config not found: ", topleveldomain)
+		ngx.exit(404)
+	end
 	if (settings:get(ngx_var.host) == nil) then
 
 		for _, k in pairs(wsettings:get_keys()) do

@@ -7,3 +7,4 @@ CREATE TABLE "event" ("id" INTEGER DEFAULT NULL PRIMARY KEY AUTOINCREMENT,"serve
 INSERT INTO "event" (servername, event)VALUES("www.test.com", "add_config");
 
 
+{"test.com":{"ups":"server 127.0.0.1:81; server 127.0.0.1:82;","gzip":true,"cache":[{"file":"jpg|gif|png","time":3600,"force":true},{"url":"/admin/","disable":true}]}}

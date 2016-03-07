@@ -5,6 +5,8 @@ local log = require "cdn.log"
 local redis_mod = require "resty.redis"
 local dyups = require "ngx.dyups"
 local sqlite3 = require "sqlite3"
+local cmsgpack = require "cmsgpack"
+
 local   tostring, ipairs, pairs, type, tonumber, next, unpack =
         tostring, ipairs, pairs, type, tonumber, next, unpack
         
@@ -19,7 +21,6 @@ local str_sub = string.sub
 
 local upstreams = ngx.shared.upstreams
 local settings = ngx.shared.settings
-local wsettings = ngx.shared.wsettings
 local locked = ngx.shared.locked
 local upstream_cached = ngx.shared.upstream_cached
 
@@ -37,30 +38,6 @@ function _M.new(self)
     return setmetatable({ config = config, redis = nil }, mt)
 end
 
-function _M.set_config(hostname, sett)
-	ngx_log(ngx_DEBUG,"hostname :" .. hostname .. ", setting :" .. sett)
-    local tmpkv = {}
-    local gsett = cjson_decode(sett)
-    if gsett ~= nil then
-        for k,v in pairs(gsett) do
-            if (k=="upstream") then
-				--dyups.update(hostname, v)
-				upstreams:set(hostname, v)
-				--ngx_log(ngx_INFO,"hostname :" .. hostname .. ", ups :" .. v)
-            elseif k=="server_type" then
-                if v==1 then
-                    --ngx_log(ngx_INFO,"got a wildcard domain set")
-                    wsettings:set(gsett["wildname"], hostname)
-                end
-            else
-                tmpkv[k]=v
-            end
-        end
-    	settings:set(hostname, cjson.encode(tmpkv))
-    else
-    	ngx_log(ngx_ERR, "get sett empty")
-    end	
-end
 
 _M.events = {
 	flush_config = {"lock", "set_empty_config", "unlock"},
@@ -85,15 +62,14 @@ _M.states = {
 		local t1 = ngx_now()
 		local i
 		for i=1, n do
-			log:debug( server.servername[i] .. server.setting[i])
+			log:debug( server.servername[i] , server.setting[i])
+			settings:set(server.servername[i] , server.setting[i])
 		end
 		local t2 = ngx_now() - t1 
-		ngx_log(ngx.NOTICE , "load config cost time : ", t2)
+		log:info("load config cost time : ", t2, "ms")
 	end,
 
 	set_config = function(self, body)
-		local bjson = cjson_decode(body)
-		self.set_config(bjson["hostname"], cjson_encode(bjson["sett"]))
 	end,
 
 	delete_config = function(self, body)
