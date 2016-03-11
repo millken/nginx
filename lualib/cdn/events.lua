@@ -19,7 +19,6 @@ local cjson_encode = cjson.encode
 local cjson_decode = cjson.decode
 local str_sub = string.sub
 
-local upstreams = ngx.shared.upstreams
 local settings = ngx.shared.settings
 local locked = ngx.shared.locked
 local upstream_cached = ngx.shared.upstream_cached
@@ -42,8 +41,8 @@ end
 _M.events = {
 	flush_config = {"lock", "set_empty_config", "unlock"},
 	load_config = {"lock", "load_config", "unlock"},
-	reload_config = {"lock", "set_empty_config", "connect_redis", "load_config", "unlock"},
-	add_config = {"lock", "set_config", "unlock"},
+	reload_config = {"lock", "set_empty_config", "load_config", "unlock"},
+	add_config = {"lock", "delete_config", "set_config", "unlock"},
 	remove_config = {"delete_config"}
 }
 
@@ -58,27 +57,40 @@ _M.states = {
 
 	load_config = function(self)
 		local db = sqlite3.open(config:get('db.file'),  "ro")
+		local last_date = db:rowexec("select max(created_at) from event")
+		settings:set("event_date", last_date)
 		local server, n = db:exec("SELECT * FROM server", "hk")
 		local t1 = ngx_now()
 		local i
 		for i=1, n do
-			log:debug( server.servername[i] , server.setting[i])
+			log:debug("servername: ",  server.servername[i] , ", setting :", server.setting[i])
 			settings:set(server.servername[i] , server.setting[i])
 		end
 		local t2 = ngx_now() - t1 
+		db:close()
 		log:info("load config cost time : ", t2, "ms")
 	end,
 
-	set_config = function(self, body)
+	set_config = function(self, servername)
+		local db = sqlite3.open(config:get('db.file'),  "ro")
+		local setting = db:rowexec("select setting from server where servername='" .. servername .. "'")
+		db:close()
+		settings:set(servername, setting)
 	end,
 
-	delete_config = function(self, body)
-		local bjson = cjson_decode(body)
-		local hostname = bjson["hostname"] or ""
-		dyups.delete(hostname)
+	delete_config = function(self, servername)
+		local setting_json = settings:get(servername)
+		if setting_json == nil then
+			return false
+		end
+		local setting = cjson.decode(setting_json)
+		local k
+		for k, _ in pairs(setting) do
+			dyups.delete(k)
+			upstream_cached:delete(k)
+		end
 		settings:delete(hostname)
-		upstreams:delete(hostname)
-		upstream_cached:delete(hostname)
+		return true
 	end,
 
 	set_empty_config = function(self)
@@ -97,20 +109,24 @@ function _M.states_locked()
 	end
 end
 
-function _M.e(self, event)
-    log:info("#e: " .. event)
+function _M.e(self, event, servername)
+	local servername = servername
+	if servername == nil then
+		servername = "default"
+	end
+    log:info("#e: ", servername, "|", event)
 	local events = self.events[event]
 	if not events then
         ngx_log(ngx_ERR, event, " is not defined.")
 	else
 		if type(events) == "table" then
 			for _, state in ipairs(events) do
-				log:debug("#t: " .. state)
-				self.states[state](self)
+				log:debug("#t: ", servername, "|", state)
+				self.states[state](self, servername)
 			end
 		else
-			log:debug("#t: " .. events)
-			self.states[events](self)
+			log:debug("#t: ", servername, "|", events)
+			self.states[events](self, servername)
 		end
     end
 end

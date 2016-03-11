@@ -49,7 +49,6 @@ buildNgx()
 	--add-module=../headers-more-nginx-module \
 	--add-module=../stream-lua-nginx-module \
 	--add-module=../ngx_http_process_coredump \
-	--add-module=../ngx-lua-shrbtree-module \
 	--with-debug \
 	--with-cc-opt="-O0"
 sed -i 's#-L/usr/local/luajit-2.0.1/lib/ -lluajit-5.1#/usr/local/lib/libluajit-5.1.a#' objs/Makefile #静态编译
