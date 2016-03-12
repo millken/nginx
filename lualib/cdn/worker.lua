@@ -1,6 +1,6 @@
 local cjson = require "cjson"
 local redis_mod = require "resty.redis"
-local sqlite3 = require "sqlite3"
+local db = require "cdn.postgres"
 
 local dyups = require "ngx.dyups"
 local events = require "cdn.events"
@@ -8,6 +8,7 @@ local config = require "cdn.config"
 local log = require "cdn.log"
 local tlds = require "cdn.tlds"
 local lrucache_mod = require "resty.lrucache"
+local lock = require "resty.lock"
 local lrucache, err = lrucache_mod.new(500)
 if not lrucache then 
 	error("failed to create the cache: " .. (err or "unknown"))	
@@ -20,17 +21,10 @@ local ngx = ngx
 local ngx_log = ngx.log
 local ngx_var = ngx.var
 local ngx_re_find = ngx.re.find
-local ngx_DEBUG = ngx.DEBUG
-local ngx_ERR = ngx.ERR
-local ngx_INFO = ngx.INFO
 local ngx_now = ngx.now
 local ngx_timer_at = ngx.timer.at
-local cjson_encode = cjson.encode
-local cjson_decode = cjson.decode
 
-local upstreams = ngx.shared.upstreams
 local settings = ngx.shared.settings
-local locked = ngx.shared.locked
 local upstream_cached = ngx.shared.upstream_cached
 
 local _M = {
@@ -56,10 +50,12 @@ local function get_ups_by_host(host)
 	local ups_key, ups_value = nil, nil
 	local topleveldomain = tlds:domain(ngx_var.host)
 	if topleveldomain == nil then
+		log:error("failed to fetch topleveldomain: ", host)
 		return nil, nil
 	end
 	local setting_json = settings:get(topleveldomain)
 	if setting_json == nil then
+		log:error("failed to fetch setting: ", topleveldomain)
 		return nil, nil
 	end
 	log:debug("topleveldomain :", topleveldomain, ", setting :", setting_json)
@@ -112,7 +108,7 @@ function _M.rewrite(self)
 			if status ~= ngx.HTTP_OK then
 				log:error("dyups update err: [", status, "]", rv)
 			else
-				log:info("load upstream : ", ups_key, ups_value)
+				log:info("load servername : ", ups_key ", upstream: ", ups_value)
 			end
 		else
 			log:error("upstream cached safe add error: ", err)
@@ -125,40 +121,34 @@ function _M.start(self, options)
     local options = setmetatable(options, { __index = DEFAULT_OPTIONS })
 
     local function worker()
-			if locked:get("worker") ~= 1 then
-			locked:set("worker", 1)
-			local sqlitefile = config:get('db.file')
-			if not file_exists(sqlitefile) then
-				log:error("can not open db file : ", sqlitefile)
-
-				locked:set("worker", 0)
-				local ok, err = ngx_timer_at(options.interval, worker)
-				if not ok then
-					log:error("failed to run worker: ", err)
-				else
-					return ok
-				end			
-			end
-
+		local locked = lock:new("locked")
+		local elapsed, err = locked:lock("worker")
+		if elapsed then
 			local ok, err = settings:safe_add("localhost", "")
 			if ok then
 			    log:info("loading config from db")
 				events:e("load_config")
 			end
 			while true do
-				local db = sqlite3.open(config:get('db.file'),  "ro")
-				local date = settings:get("event_date")
-				local event, n = db:exec("SELECT * FROM event where created_at>'" .. date .."' order by created_at asc", "hk")
-				db:close()
-				for i=1, n do
-					log:debug("servername: ",  event.servername[i] , ", event :", event.event[i], ", created_at: ", event.created_at[i])
-					events:e(event.event[i], event.servername[i])
-					settings:set("event_date", event.created_at[i])
+				local utime = settings:get("event_last_utime")
+				utime = '2016-03-11 11:35:19.688017'
+				--local ok, res = db:query("select event.servername, utime, act, setting::TEXT from config.event left outer join config.server on event.servername = server.servername where utime>'" .. utime .."' order by utime asc")
+				local ok, res = db:query("select servername, utime, act from config.event  where utime>'" .. utime .."' order by utime asc")
+				if not ok then
+					log:error("query event err: ", res)
+					break
+				end
+				for i=1, #res do
+					local r = res[i]
+					events:e(r.act, r.servername)
+					settings:set("event_last_utime", r.utime)
 				end
 				ngx.sleep(1)
 			end
-			locked:set("worker", 0)
-			--log:debug("worker running")
+			local ok, err = locked:unlock()
+			if not ok then
+				log:error("failed to unlock worker: ", err)
+			end
 		end
 		
 		local ok, err = ngx_timer_at(options.interval, worker)

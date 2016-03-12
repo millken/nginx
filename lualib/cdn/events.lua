@@ -4,8 +4,9 @@ local log = require "cdn.log"
 
 local redis_mod = require "resty.redis"
 local dyups = require "ngx.dyups"
-local sqlite3 = require "sqlite3"
+local db = require "cdn.postgres"
 local cmsgpack = require "cmsgpack"
+local lock = require "resty.lock"
 
 local   tostring, ipairs, pairs, type, tonumber, next, unpack =
         tostring, ipairs, pairs, type, tonumber, next, unpack
@@ -31,40 +32,41 @@ local mt = { __index = _M }
 
 function _M.new(self)
  	local config = {
-		redis = { host = "127.0.0.1", port = 6379 },
-        upstream_connect_timeout = 500,
     }
     return setmetatable({ config = config, redis = nil }, mt)
 end
 
 
 _M.events = {
-	flush_config = {"lock", "set_empty_config", "unlock"},
-	load_config = {"lock", "load_config", "unlock"},
-	reload_config = {"lock", "set_empty_config", "load_config", "unlock"},
-	add_config = {"lock", "delete_config", "set_config", "unlock"},
+	flush_config = {"set_empty_config"},
+	load_config = {"load_config"},
+	reload_config = {"set_empty_config", "load_config"},
+	add_config = {"delete_config", "set_config"},
 	remove_config = {"delete_config"}
 }
 
 _M.states = {
-	lock = function(self)
-		locked:set("states", 1)
-	end,
-
-	unlock = function(self)
-		locked:set("states", 0)
-	end,
-
 	load_config = function(self)
-		local db = sqlite3.open(config:get('db.file'),  "ro")
-		local last_date = db:rowexec("select max(created_at) from event")
-		settings:set("event_date", last_date)
-		local server, n = db:exec("SELECT * FROM server", "hk")
+		local ok, res = db:query("select max(utime) from config.event")
+		if not ok then
+			log:error("query event err: ", res)
+			return
+		end
+		if #res > 0 then
+			settings:set("event_last_utime", res[1].max)
+			log:info("last update time for event: ", res[1].max)
+		end
+		local ok, res = db:query("SELECT * FROM config.server")
+		if not ok then
+			log:error("query server err: ", res)
+			return
+		end
 		local t1 = ngx_now()
 		local i
-		for i=1, n do
-			log:debug("servername: ",  server.servername[i] , ", setting :", server.setting[i])
-			settings:set(server.servername[i] , server.setting[i])
+		for i=1, #res do
+			local s = res[i]
+			log:debug("servername: ",  s.servername , ", setting :", s.setting)
+			settings:set(s.servername , s.setting)
 		end
 		local t2 = ngx_now() - t1 
 		db:close()
@@ -72,10 +74,18 @@ _M.states = {
 	end,
 
 	set_config = function(self, servername)
-		local db = sqlite3.open(config:get('db.file'),  "ro")
-		local setting = db:rowexec("select setting from server where servername='" .. servername .. "'")
-		db:close()
-		settings:set(servername, setting)
+		local ok, res = db:query("select setting from config.server  where servername='" .. servername .."'")
+		if not ok then
+			log:error("set_config query err: ", res)
+			return
+		end
+		if #res >0 then
+			local r = res[1]
+			log:debug("set_confg: ", servername, ": ", r.setting)
+			settings:set(servername , r.setting)
+		else
+			log:error("failed to found setting: ", servername)
+		end
 	end,
 
 	delete_config = function(self, servername)
@@ -86,10 +96,11 @@ _M.states = {
 		local setting = cjson.decode(setting_json)
 		local k
 		for k, _ in pairs(setting) do
+			log:debug("delete vhost: ", k)
 			dyups.delete(k)
 			upstream_cached:delete(k)
 		end
-		settings:delete(hostname)
+		settings:delete(servername)
 		return true
 	end,
 
@@ -101,31 +112,26 @@ _M.states = {
 	end,
 }
 
-function _M.states_locked()
-	if locked:get("states") == 1 then
-		return true
-	else
-		return false
-	end
-end
-
 function _M.e(self, event, servername)
 	local servername = servername
 	if servername == nil then
 		servername = "default"
 	end
-    log:info("#e: ", servername, "|", event)
+	if event == nil then
+		return
+	end
+    log:info("#e: ", servername, "[", event, "]")
 	local events = self.events[event]
 	if not events then
         ngx_log(ngx_ERR, event, " is not defined.")
 	else
 		if type(events) == "table" then
 			for _, state in ipairs(events) do
-				log:debug("#t: ", servername, "|", state)
+				--log:debug("#t: ", servername, "|", state)
 				self.states[state](self, servername)
 			end
 		else
-			log:debug("#t: ", servername, "|", events)
+			--log:debug("#t: ", servername, "|", events)
 			self.states[events](self, servername)
 		end
     end

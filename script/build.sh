@@ -25,7 +25,7 @@ buildNgx()
 	cd $NGINX
 	export LUAJIT_INC=/usr/local/include/luajit-2.1/
 	export LUAJIT_LIB=/usr/local/lib
-	./auto/configure --prefix=/nginx   \
+	./configure --prefix=/nginx   \
 	--with-http_ssl_module \
 	--without-http_fastcgi_module \
 	--without-http_uwsgi_module \
@@ -47,7 +47,6 @@ buildNgx()
 	--add-module=../ngx_http_dyups_module \
 	--add-module=../lua-upstream-cache-nginx-module \
 	--add-module=../headers-more-nginx-module \
-	--add-module=../stream-lua-nginx-module \
 	--add-module=../ngx_http_process_coredump \
 	--with-debug \
 	--with-cc-opt="-O0"
