@@ -95,7 +95,7 @@ else
 end
 
 -- if QPS is exceed 5, start cookie challenge
-if req_count and req_count > 2 then
+if req_count and req_count > 20 then
 	local user_id = ngx_md5(zone_key)
     if cookies[COOKIE_NAME] ~= user_id then
         cookie.challenge(COOKIE_NAME, user_id)

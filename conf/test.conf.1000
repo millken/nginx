@@ -14,7 +14,7 @@ http {
 	lua_code_cache off;
 	lua_package_path '/home/github/tengcdn/lualib/?.lua;;';
 	lua_package_cpath '/home/github/tengcdn/lualib/?.so;;';
-    lua_shared_dict stats 10m;
+    lua_shared_dict stats 100m;
     
     server {
         listen 82;
