@@ -108,7 +108,7 @@ function _M.rewrite(self)
 			if status ~= ngx.HTTP_OK then
 				log:error("dyups update err: [", status, "]", rv)
 			else
-				log:info("load servername : ", ups_key ", upstream: ", ups_value)
+				log:info("load servername : ", ups_key, ", upstream: ", ups_value)
 			end
 		else
 			log:error("upstream cached safe add error: ", err)
@@ -132,18 +132,18 @@ function _M.start(self, options)
 			while true do
 				local utime = settings:get("event_last_utime")
 				utime = '2016-03-11 11:35:19.688017'
-				--local ok, res = db:query("select event.servername, utime, act, setting::TEXT from config.event left outer join config.server on event.servername = server.servername where utime>'" .. utime .."' order by utime asc")
-				local ok, res = db:query("select servername, utime, act from config.event  where utime>'" .. utime .."' order by utime asc")
+				local ok, res = db:query("select event.servername, utime, act, setting setting from config.event left outer join config.server on event.servername = server.servername where utime>'" .. utime .."' order by utime asc")
+				--local ok, res = db:query("select servername, utime, act from config.event  where utime>'" .. utime .."' order by utime asc")
 				if not ok then
 					log:error("query event err: ", res)
 					break
 				end
 				for i=1, #res do
 					local r = res[i]
-					events:e(r.act, r.servername)
+					events:e(r.act, r.servername, r.setting)
 					settings:set("event_last_utime", r.utime)
 				end
-				ngx.sleep(1)
+				ngx.sleep(10)
 			end
 			local ok, err = locked:unlock()
 			if not ok then

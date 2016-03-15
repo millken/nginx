@@ -65,15 +65,22 @@ _M.states = {
 		local i
 		for i=1, #res do
 			local s = res[i]
-			log:debug("servername: ",  s.servername , ", setting :", s.setting)
-			settings:set(s.servername , s.setting)
+			local setting = cjson.encode(s.setting)
+			log:debug("servername: ",  s.servername , ", setting :", setting)
+			settings:set(s.servername , setting)
 		end
 		local t2 = ngx_now() - t1 
 		db:close()
 		log:info("load config cost time : ", t2, "ms")
 	end,
 
-	set_config = function(self, servername)
+	set_config = function(self, servername, setting)
+		if setting ~= ngx.null then
+			local setting = cjson.encode(setting)
+			log:debug("set_confg0: ", servername, ": ", setting)
+			settings:set(servername , setting)
+			return
+		end
 		local ok, res = db:query("select setting from config.server  where servername='" .. servername .."'")
 		if not ok then
 			log:error("set_config query err: ", res)
@@ -81,8 +88,9 @@ _M.states = {
 		end
 		if #res >0 then
 			local r = res[1]
-			log:debug("set_confg: ", servername, ": ", r.setting)
-			settings:set(servername , r.setting)
+			local setting = cjson.encode(r.setting)
+			log:debug("set_confg1: ", servername, ": ", setting)
+			settings:set(servername , setting)
 		else
 			log:error("failed to found setting: ", servername)
 		end
@@ -112,7 +120,7 @@ _M.states = {
 	end,
 }
 
-function _M.e(self, event, servername)
+function _M.e(self, event, servername, setting)
 	local servername = servername
 	if servername == nil then
 		servername = "default"
@@ -128,11 +136,11 @@ function _M.e(self, event, servername)
 		if type(events) == "table" then
 			for _, state in ipairs(events) do
 				--log:debug("#t: ", servername, "|", state)
-				self.states[state](self, servername)
+				self.states[state](self, servername, setting)
 			end
 		else
 			--log:debug("#t: ", servername, "|", events)
-			self.states[events](self, servername)
+			self.states[events](self, servername, setting)
 		end
     end
 end

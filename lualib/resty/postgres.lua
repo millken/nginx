@@ -4,7 +4,8 @@ local string = string
 local table  = table
 local bit    = bit
 local ngx    = ngx
-local tonumber = tonumber
+local cjson  = require "cjson"
+local tonumber,tostring = tonumber,tostring
 local setmetatable = setmetatable
 local error = error
 
@@ -27,13 +28,18 @@ converters[21] = tonumber
 converters[22] = tonumber
 -- INT4OID
 converters[23] = tonumber
+-- TEXTOID
+--converters[25] = tostring
 -- FLOAT4OID
 converters[700] = tonumber
 -- FLOAT8OID
 converters[701] = tonumber
 -- NUMERICOID
 converters[1700] = tonumber
-
+-- JSONOID
+converters[114] = cjson.decode
+-- JSONOID
+converters[3802] = cjson.decode
 function new(self)
     local sock, err = ngx.socket.tcp()
     if not sock then
@@ -379,6 +385,7 @@ function read_result(self)
                 end
                 local field = fields[i]
                 local conv = converters[field.type_id]
+				--ngx.log(ngx.ERR, "name=", field.name, "type_id=", field.type_id, "data=", data)
                 if conv and data ~= ngx.null then
                     data = conv(data)
                 end
