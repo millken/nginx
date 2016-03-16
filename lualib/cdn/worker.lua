@@ -119,23 +119,27 @@ end
 
 function _M.start(self, options)
     local options = setmetatable(options, { __index = DEFAULT_OPTIONS })
+	local locked = lock:new("locked", {exptime = 300, step = 0.5})
 
     local function worker()
-		local locked = lock:new("locked")
 		local elapsed, err = locked:lock("worker")
 		if elapsed then
-			local ok, err = settings:safe_add("localhost", "")
-			if ok then
-			    log:info("loading config from db")
+			local sok, err = settings:add("localhost", true)
+			if sok then
+				log:info("loading config from db")
 				events:e("load_config")
 			end
-			while true do
+			log:info("continue")
+			while false do
 				local utime = settings:get("event_last_utime")
-				utime = '2016-03-11 11:35:19.688017'
+				if not utime then
+					break
+				end
+				--utime = '2016-03-11 11:35:19.688017'
 				local ok, res = db:query("select event.servername, utime, act, setting setting from config.event left outer join config.server on event.servername = server.servername where utime>'" .. utime .."' order by utime asc")
 				--local ok, res = db:query("select servername, utime, act from config.event  where utime>'" .. utime .."' order by utime asc")
 				if not ok then
-					log:error("query event err: ", res)
+					log:error("query event worker err: ", res)
 					break
 				end
 				for i=1, #res do
@@ -143,7 +147,7 @@ function _M.start(self, options)
 					events:e(r.act, r.servername, r.setting)
 					settings:set("event_last_utime", r.utime)
 				end
-				ngx.sleep(10)
+				--ngx.sleep(10)
 			end
 			local ok, err = locked:unlock()
 			if not ok then

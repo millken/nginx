@@ -7,6 +7,7 @@ local dyups = require "ngx.dyups"
 local db = require "cdn.postgres"
 local cmsgpack = require "cmsgpack"
 local lock = require "resty.lock"
+local time = require "cdn.time"
 
 local   tostring, ipairs, pairs, type, tonumber, next, unpack =
         tostring, ipairs, pairs, type, tonumber, next, unpack
@@ -47,31 +48,37 @@ _M.events = {
 
 _M.states = {
 	load_config = function(self)
+		local t1 = time.gettimeofday()
 		local ok, res = db:query("select max(utime) from config.event")
 		if not ok then
-			log:error("query event err: ", res)
+			log:error("query event events err: ", res)
 			return
 		end
 		if #res > 0 then
 			settings:set("event_last_utime", res[1].max)
 			log:info("last update time for event: ", res[1].max)
 		end
-		local ok, res = db:query("SELECT * FROM config.server")
-		if not ok then
-			log:error("query server err: ", res)
-			return
-		end
-		local t1 = ngx_now()
-		local i
-		for i=1, #res do
-			local s = res[i]
-			local setting = cjson.encode(s.setting)
-			log:debug("servername: ",  s.servername , ", setting :", setting)
-			settings:set(s.servername , setting)
-		end
-		local t2 = ngx_now() - t1 
+		local ok, res = db:query_row("select max(id),count(id) from config.server")
+		if not ok then return end
+		local offset = 0
+		local max_id = res.max
+		local limit = 2500
+		while offset <= res.count do
+			local ok, res = db:query("SELECT * FROM config.server where id<= " .. max_id .. " order by id asc limit " .. limit .. " offset " .. offset)
+			if not ok or #res == 0 then
+				break
+			end
+			for i=1, #res do
+				local s = res[i]
+				local setting = cjson.encode(s.setting)
+				settings:set(s.servername , setting)
+			end
+			offset = offset + #res
+			res = nil
+		end	
 		db:close()
-		log:info("load config cost time : ", t2, "ms")
+		local t2 = time.gettimeofday() - t1 
+		log:info("load config cost time : ", t2/1000, "ms")
 	end,
 
 	set_config = function(self, servername, setting)
@@ -122,6 +129,7 @@ _M.states = {
 
 function _M.e(self, event, servername, setting)
 	local servername = servername
+	local event = event
 	if servername == nil then
 		servername = "default"
 	end
@@ -131,7 +139,7 @@ function _M.e(self, event, servername, setting)
     log:info("#e: ", servername, "[", event, "]")
 	local events = self.events[event]
 	if not events then
-        ngx_log(ngx_ERR, event, " is not defined.")
+        log:error("servername: ", servername, ", event: ", event, " is not defined.")
 	else
 		if type(events) == "table" then
 			for _, state in ipairs(events) do

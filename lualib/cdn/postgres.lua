@@ -34,6 +34,17 @@ function _M:query(sql)
 	return true, res
 end
 
+function _M:query_row(sql)
+	local ok, res = self:query(sql)
+	if not ok then
+		return false, res
+	elseif #res > 0 then
+		return true, res[1]
+	end
+
+	return false, "unknow error"
+end
+
 function _M:close()
 	if self.db then
 		self.db:set_keepalive(0,100)
