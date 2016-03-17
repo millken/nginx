@@ -102,6 +102,9 @@ function _M.rewrite(self)
 		if ups_value == nil then
 			ups_key, ups_value = get_ups_by_host(ngx_var.host)
 		end
+		if ups_key == nil or ups_value == nil then
+			ngx.exit(404)
+		end
 		local ok, err = upstream_cached:safe_add(ups_key, ups_value)
 		if ok then
 			local status, rv = dyups.update(ups_key, ups_value)
