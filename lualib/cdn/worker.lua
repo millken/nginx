@@ -1,6 +1,7 @@
 local cjson = require "cjson"
 local redis_mod = require "resty.redis"
 local db = require "cdn.postgres"
+local cmsgpack = require "cmsgpack"
 
 local dyups = require "ngx.dyups"
 local events = require "cdn.events"
@@ -58,14 +59,13 @@ local function get_ups_by_host(host)
 		log:error("failed to fetch setting: ", topleveldomain)
 		return nil, nil
 	end
-	log:debug("topleveldomain :", topleveldomain, ", setting :", setting_json)
-	local setting = cjson.decode(setting_json)
+	local setting = cmsgpack.unpack(setting_json)
 	if setting[ngx_var.host] == nil then
 		for k, v in pairs(setting) do
 			local i = k:find("%*")
 			if i then 
-				local from, to, err = ngx_re_find(ngx_var.host, k)
-			log:debug(k, "*", i, from, v.ups)
+				local rek, n, err = ngx.re.gsub(k, "\\*", "(.*?)")
+				local from, to, err = ngx_re_find(ngx_var.host, rek, "isjo")
 				if from and v.ups ~= nil then
 					ups_key = k
 					lrucache:set(ngx_var.host, ups_key)
@@ -121,16 +121,16 @@ function _M.start(self, options)
     local options = setmetatable(options, { __index = DEFAULT_OPTIONS })
 	local locked = lock:new("locked", {exptime = 300, step = 0.5})
 
-    local function worker()
+    local function worker(premature)
+		if premature then  return  end
 		local elapsed, err = locked:lock("worker")
 		if elapsed then
-			local sok, err = settings:add("localhost", true)
-			if sok then
+			local ok, err = settings:safe_add("localhost", true)
+			if ok then
 				log:info("loading config from db")
 				events:e("load_config")
 			end
-			log:info("continue")
-			while false do
+			while not ngx.worker.exiting() do
 				local utime = settings:get("event_last_utime")
 				if not utime then
 					break
@@ -147,16 +147,17 @@ function _M.start(self, options)
 					events:e(r.act, r.servername, r.setting)
 					settings:set("event_last_utime", r.utime)
 				end
-				--ngx.sleep(10)
+				ngx.sleep(3)
 			end
 			local ok, err = locked:unlock()
 			if not ok then
 				log:error("failed to unlock worker: ", err)
 			end
 		end
-		
 		local ok, err = ngx_timer_at(options.interval, worker)
 		if not ok then
+			upstream_cached:flush_all()
+			db:close()		
 			log:error("failed to run worker: ", err)
 		end
 	end

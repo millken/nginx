@@ -39,9 +39,9 @@ end
 
 
 _M.events = {
-	flush_config = {"set_empty_config"},
+	flush_config = {"set_empty_setting"},
 	load_config = {"load_config"},
-	reload_config = {"set_empty_config", "load_config"},
+	reload_config = {"set_empty_setting", "load_config", "set_empty_upstream_cached"},
 	add_config = {"delete_config", "set_config"},
 	remove_config = {"delete_config"}
 }
@@ -70,8 +70,11 @@ _M.states = {
 			end
 			for i=1, #res do
 				local s = res[i]
-				local setting = cjson.encode(s.setting)
-				settings:set(s.servername , setting)
+				local setting = cmsgpack.pack(s.setting)
+				local success, err, forcible = settings:set(s.servername , setting)
+				if not success then 
+					log:error("events settings:set ", s.servername, err)
+				end
 			end
 			offset = offset + #res
 			res = nil
@@ -83,9 +86,11 @@ _M.states = {
 
 	set_config = function(self, servername, setting)
 		if setting ~= ngx.null then
-			local setting = cjson.encode(setting)
-			log:debug("set_confg0: ", servername, ": ", setting)
-			settings:set(servername , setting)
+			local setting = cmsgpack.pack(setting)
+			local success, err, forcible = settings:set(servername , setting)
+			if not success then
+				log:error("set_config error : ", err)
+			end
 			return
 		end
 		local ok, res = db:query("select setting from config.server  where servername='" .. servername .."'")
@@ -95,9 +100,12 @@ _M.states = {
 		end
 		if #res >0 then
 			local r = res[1]
-			local setting = cjson.encode(r.setting)
-			log:debug("set_confg1: ", servername, ": ", setting)
-			settings:set(servername , setting)
+			local setting = cmsgpack.pack(r.setting)
+			local success, err, forcible = settings:set(servername , setting)
+			if not success then
+				log:error("set_config error : ", err)
+			end
+		
 		else
 			log:error("failed to found setting: ", servername)
 		end
@@ -108,7 +116,7 @@ _M.states = {
 		if setting_json == nil then
 			return false
 		end
-		local setting = cjson.decode(setting_json)
+		local setting = cmsgpack.unpack(setting_json)
 		local k
 		for k, _ in pairs(setting) do
 			log:debug("delete vhost: ", k)
@@ -119,10 +127,11 @@ _M.states = {
 		return true
 	end,
 
-	set_empty_config = function(self)
+	set_empty_setting = function(self)
 		settings:flush_all()
-		wsettings:flush_all()
-		upstreams:flush_all()
+	end,
+
+	set_empty_upstream_cached = function(self)
 		upstream_cached:flush_all()
 	end,
 }
