@@ -19,19 +19,34 @@ function _M:get_connect()
 		return false, "can not connect to postgreSQL: " .. err
 	end
 	self.db = db
+
 	return true, self.db
 end
 
 function _M:query(sql)
 	local ok, db = self:get_connect()
 	if not ok then
+		self.db = nil
 		return false, db 
 	end
 	local res, err = db:query(sql)
 	if not res then
+		self.db = nil
 		return false, err
 	end
 	return true, res
+end
+
+function _M:query_row(sql)
+	local ok, res = self:query(sql)
+	if not ok then
+		self.db = nil
+		return false, res
+	elseif #res > 0 then
+		return true, res[1]
+	end
+
+	return false, "unknow error"
 end
 
 function _M:close()

@@ -1,6 +1,7 @@
 local cjson = require "cjson"
 local redis_mod = require "resty.redis"
 local db = require "cdn.postgres"
+local cmsgpack = require "cmsgpack"
 
 local dyups = require "ngx.dyups"
 local events = require "cdn.events"
@@ -58,14 +59,13 @@ local function get_ups_by_host(host)
 		log:error("failed to fetch setting: ", topleveldomain)
 		return nil, nil
 	end
-	log:debug("topleveldomain :", topleveldomain, ", setting :", setting_json)
-	local setting = cjson.decode(setting_json)
+	local setting = cmsgpack.unpack(setting_json)
 	if setting[ngx_var.host] == nil then
 		for k, v in pairs(setting) do
 			local i = k:find("%*")
 			if i then 
-				local from, to, err = ngx_re_find(ngx_var.host, k)
-			log:debug(k, "*", i, from, v.ups)
+				local rek, n, err = ngx.re.gsub(k, "\\*", "(.*?)")
+				local from, to, err = ngx_re_find(ngx_var.host, rek, "isjo")
 				if from and v.ups ~= nil then
 					ups_key = k
 					lrucache:set(ngx_var.host, ups_key)
@@ -102,13 +102,16 @@ function _M.rewrite(self)
 		if ups_value == nil then
 			ups_key, ups_value = get_ups_by_host(ngx_var.host)
 		end
+		if ups_key == nil or ups_value == nil then
+			ngx.exit(404)
+		end
 		local ok, err = upstream_cached:safe_add(ups_key, ups_value)
 		if ok then
 			local status, rv = dyups.update(ups_key, ups_value)
 			if status ~= ngx.HTTP_OK then
 				log:error("dyups update err: [", status, "]", rv)
 			else
-				log:info("load servername : ", ups_key ", upstream: ", ups_value)
+				log:info("load servername : ", ups_key, ", upstream: ", ups_value)
 			end
 		else
 			log:error("upstream cached safe add error: ", err)
@@ -119,40 +122,45 @@ end
 
 function _M.start(self, options)
     local options = setmetatable(options, { __index = DEFAULT_OPTIONS })
+	local locked = lock:new("locked", {exptime = 300, step = 0.5})
 
-    local function worker()
-		local locked = lock:new("locked")
+    local function worker(premature)
+		if premature then  return  end
 		local elapsed, err = locked:lock("worker")
 		if elapsed then
-			local ok, err = settings:safe_add("localhost", "")
+			local ok, err = settings:safe_add("localhost", true)
 			if ok then
-			    log:info("loading config from db")
+				log:info("loading config from db")
 				events:e("load_config")
 			end
-			while true do
+			while not ngx.worker.exiting() do
 				local utime = settings:get("event_last_utime")
-				utime = '2016-03-11 11:35:19.688017'
-				--local ok, res = db:query("select event.servername, utime, act, setting::TEXT from config.event left outer join config.server on event.servername = server.servername where utime>'" .. utime .."' order by utime asc")
-				local ok, res = db:query("select servername, utime, act from config.event  where utime>'" .. utime .."' order by utime asc")
+				if not utime then
+					break
+				end
+				--utime = '2016-03-11 11:35:19.688017'
+				local ok, res = db:query("select event.servername, utime, act, setting setting from config.event left outer join config.server on event.servername = server.servername where utime>'" .. utime .."' order by utime asc")
+				--local ok, res = db:query("select servername, utime, act from config.event  where utime>'" .. utime .."' order by utime asc")
 				if not ok then
-					log:error("query event err: ", res)
+					log:error("query event worker err: ", res)
 					break
 				end
 				for i=1, #res do
 					local r = res[i]
-					events:e(r.act, r.servername)
+					events:e(r.act, r.servername, r.setting)
 					settings:set("event_last_utime", r.utime)
 				end
-				ngx.sleep(1)
+				ngx.sleep(3)
 			end
 			local ok, err = locked:unlock()
 			if not ok then
 				log:error("failed to unlock worker: ", err)
 			end
 		end
-		
 		local ok, err = ngx_timer_at(options.interval, worker)
 		if not ok then
+			upstream_cached:flush_all()
+			db:close()		
 			log:error("failed to run worker: ", err)
 		end
 	end
