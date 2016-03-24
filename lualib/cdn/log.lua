@@ -1,5 +1,6 @@
 local logger = require "resty.logger"
 local config = require "cdn.config"
+local cjson = require "cjson"
 local table_concat = table.concat
 local ngx = ngx
 local _M = {
@@ -9,6 +10,7 @@ local _M = {
 local LVL_DEBUG = 1
 local LVL_INFO  = 2
 local LVL_ERROR = 3
+local LVL_ALERT = 7
 local LVL_NONE  = 999
 
 local mt = { __index = _M }
@@ -37,6 +39,24 @@ function _M.debug(self, ... )
 			filer:debug(table_concat({...}))
 		else
 			ngx.log(ngx.DEBUG, ...)
+		end
+	end
+end
+
+function _M.alert(self, ...)
+	if config:get('log.status') then
+		local log_level = config:get('log.level') or LVL_NONE
+		if log_level and log_level > LVL_ALERT then return end
+
+		local log_table = {}
+		for i = 1, select("#", ...) do
+			log_table[i] = select(i, ...)
+		end
+		local filer = config:get('log.file')
+		if filer then
+			filer:debug(cjson.encode(log_table))
+		else
+			ngx.log(ngx.ALERT, cjson.encode(log_table))
 		end
 	end
 end
