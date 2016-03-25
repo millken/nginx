@@ -15,6 +15,11 @@ if not lrucache then
 	error("failed to create the cache: " .. (err or "unknown"))	
 end
 
+local lrudsc, err = lrucache_mod.new(1000)
+if not lrudsc then 
+	error("failed to create the cache: " .. (err or "unknown"))	
+end
+
 local   tostring, ipairs, pairs, type, tonumber, next, unpack =
         tostring, ipairs, pairs, type, tonumber, next, unpack
 local open = io.open
@@ -48,18 +53,12 @@ local function file_exists(path)
 end
 
 local function get_ups_by_host(host)
-	local ups_key, ups_value = nil, nil
-	local topleveldomain = tlds:domain(ngx_var.host)
-	if topleveldomain == nil then
-		log:error("failed to fetch topleveldomain: ", host)
+	local ups_key, ups_value
+	local setting, err = _M.get_setting(ngx_var.host)
+	if setting == nil then
+		log:info("get_setting : ", err)
 		return nil, nil
 	end
-	local setting_json = settings:get(topleveldomain)
-	if setting_json == nil then
-		log:error("failed to fetch setting: ", topleveldomain)
-		return nil, nil
-	end
-	local setting = cmsgpack.unpack(setting_json)
 	if setting[ngx_var.host] == nil then
 		for k, v in pairs(setting) do
 			local i = k:find("%*")
@@ -83,6 +82,25 @@ local function get_ups_by_host(host)
 		end
 	end
 	return ups_key, ups_value
+end
+
+function _M.get_setting(self, host)
+	local topleveldomain = tlds:domain(host)
+	if topleveldomain == nil then
+		return nil, "failed to get tld: " .. host
+	end
+	local setting = lrudsc:get(topleveldomain)
+	if setting ~= nil then
+		return setting
+	end
+	local setting_json = settings:get(topleveldomain)
+	if setting_json == nil then
+		return nil, "failed to get setting: " .. topleveldomain
+	end
+	local setting = cmsgpack.unpack(setting_json)
+	lrudsc:set(topleveldomain, setting)
+	return setting, nil
+
 end
 
 function _M.rewrite(self)
