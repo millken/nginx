@@ -1,16 +1,14 @@
 local cjson = require "cjson"
 local cookie = require "cdn.cookie"
+local config = require "cdn.config"
+local log = require "cdn.log"
 
 local   tostring, ipairs, pairs, type, tonumber, next, unpack =
         tostring, ipairs, pairs, type, tonumber, next, unpack
         
-local ngx_log = ngx.log
 local ngx_var = ngx.var
 local ngx_ctx = ngx.ctx
 local ngx_re_find = ngx.re.find
-local ngx_DEBUG = ngx.DEBUG
-local ngx_ERR = ngx.ERR
-local ngx_INFO = ngx.INFO
 local ngx_now = ngx.now
 local ngx_exit = ngx.exit
 local ngx_md5 = ngx.md5
@@ -83,7 +81,7 @@ if not hd_count then
 end
 
 
-ngx_log(ngx_INFO, "ip total: ", req_iplist:get(ip_key), "(", ip_interval, "s)", 
+log:info("ip total: ", req_iplist:get(ip_key), "(", ip_interval, "s)", 
 "req total: ", req_metrics:get(req_key), "(", req_interval, "s)",
 "http header total: ", req_metrics:get(hd_key), "(", hd_interval, "s)", ngx_time()
 )

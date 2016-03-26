@@ -1,6 +1,7 @@
 local cjson = require "cjson"
 local config = require "cdn.config"
 local log = require "cdn.log"
+local hosts = require "cdn.hosts"
 
 local redis_mod = require "resty.redis"
 local dyups = require "ngx.dyups"
@@ -116,6 +117,8 @@ _M.states = {
 		if setting_json == nil then
 			return false
 		end
+		hosts.delete_cache(servername)
+		settings:delete(servername)
 		local setting = cmsgpack.unpack(setting_json)
 		local k
 		for k, _ in pairs(setting) do
@@ -123,7 +126,6 @@ _M.states = {
 			dyups.delete(k)
 			upstream_cached:delete(k)
 		end
-		settings:delete(servername)
 		return true
 	end,
 

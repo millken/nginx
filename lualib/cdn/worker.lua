@@ -1,32 +1,16 @@
 local cjson = require "cjson"
-local redis_mod = require "resty.redis"
 local db = require "cdn.postgres"
 local cmsgpack = require "cmsgpack"
 
 local dyups = require "ngx.dyups"
 local events = require "cdn.events"
 local config = require "cdn.config"
+local hosts = require "cdn.hosts"
 local log = require "cdn.log"
-local tlds = require "cdn.tlds"
-local lrucache_mod = require "resty.lrucache"
 local lock = require "resty.lock"
-local lrucache, err = lrucache_mod.new(500)
-if not lrucache then 
-	error("failed to create the cache: " .. (err or "unknown"))	
-end
-
-local lrudsc, err = lrucache_mod.new(1000)
-if not lrudsc then 
-	error("failed to create the cache: " .. (err or "unknown"))	
-end
-
-local   tostring, ipairs, pairs, type, tonumber, next, unpack =
-        tostring, ipairs, pairs, type, tonumber, next, unpack
 local open = io.open
 local ngx = ngx
-local ngx_log = ngx.log
 local ngx_var = ngx.var
-local ngx_re_find = ngx.re.find
 local ngx_now = ngx.now
 local ngx_timer_at = ngx.timer.at
 
@@ -52,63 +36,12 @@ local function file_exists(path)
 	return true
 end
 
-local function get_ups_by_host(host)
-	local ups_key, ups_value
-	local setting, err = _M.get_setting(ngx_var.host)
-	if setting == nil then
-		log:info("get_setting : ", err)
-		return nil, nil
-	end
-	if setting[ngx_var.host] == nil then
-		for k, v in pairs(setting) do
-			local i = k:find("%*")
-			if i then 
-				local rek, n, err = ngx.re.gsub(k, "\\*", "(.*?)")
-				local from, to, err = ngx_re_find(ngx_var.host, rek, "isjo")
-				if from and v.ups ~= nil then
-					ups_key = k
-					lrucache:set(ngx_var.host, ups_key)
-					ups_value = v.ups
-					break
-				end
-			end
-		end
-	else
-		local v = setting[ngx_var.host]
-		if v.ups ~= nil then
-			ups_key = ngx_var.host
-			lrucache:set(ngx_var.host, ups_key)
-			ups_value = v.ups
-		end
-	end
-	return ups_key, ups_value
-end
-
-function _M.get_setting(self, host)
-	local topleveldomain = tlds:domain(host)
-	if topleveldomain == nil then
-		return nil, "failed to get tld: " .. host
-	end
-	local setting = lrudsc:get(topleveldomain)
-	if setting ~= nil then
-		return setting
-	end
-	local setting_json = settings:get(topleveldomain)
-	if setting_json == nil then
-		return nil, "failed to get setting: " .. topleveldomain
-	end
-	local setting = cmsgpack.unpack(setting_json)
-	lrudsc:set(topleveldomain, setting)
-	return setting, nil
-
-end
-
-function _M.rewrite(self)
-	local ups_key = lrucache:get(ngx_var.host)
+function _M.rewrite()
+	local ups_key = hosts.get_ups_key(ngx_var.host)
 	local ups_value 
 
 	if ups_key == nil then
-		ups_key, ups_value = get_ups_by_host(ngx_var.host)
+		ups_key, ups_value = hosts.get_ups(ngx_var.host)
 	end
 
 	if ups_key == nil then
@@ -118,7 +51,7 @@ function _M.rewrite(self)
 	local ups_cache, _ = upstream_cached:get(ups_key)
 	if not ups_cache then
 		if ups_value == nil then
-			ups_key, ups_value = get_ups_by_host(ngx_var.host)
+			ups_key, ups_value = hosts.get_ups(ngx_var.host)
 		end
 		if ups_key == nil or ups_value == nil then
 			ngx.exit(404)
@@ -134,6 +67,10 @@ function _M.rewrite(self)
 		else
 			log:error("upstream cached safe add error: ", err)
 		end
+	end
+	local setting, err = hosts.get_setting(ngx_var.host)
+	if setting then
+		config:set("upsconf", setting[ups_key])
 	end
 	ngx_var.ups = ups_key
 end
