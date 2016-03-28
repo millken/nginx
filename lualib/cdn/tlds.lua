@@ -37,7 +37,7 @@ local function split(s, re)
   end
 end
 
-function _M.get_tlds(self)
+function _M.get_tlds()
 	local tlds = cached:get("tldsdb")
 	local tmp = {}
 	if 	not tlds then
@@ -65,12 +65,12 @@ function _M.get_tlds(self)
 	return cmsgpack.unpack(cached:get("tldsdb"))
 end
 
-function _M.domain(self, host)
+function _M.domain(host)
 	local result, state = lrucache:get(host)
 	if result then
 		return result
 	end
-	local node = self.get_tlds() 
+	local node = _M.get_tlds() 
 	local parts = split(host:lower(), "%.")
 	local i1 = 1
 	local re = "%."

@@ -1,6 +1,4 @@
 local ngx = ngx
-local   tostring, ipairs, pairs, type, tonumber, next, unpack =
-        tostring, ipairs, pairs, type, tonumber, next, unpack
 
 local _M = {
     _VERSION = '0.01',
