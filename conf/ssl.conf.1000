@@ -42,6 +42,7 @@ http {
         ssl_ciphers HIGH:!aNULL:!eNULL:!EXPORT:!CAMELLIA:!DES:!MD5:!PSK:!RC4;
         ssl_prefer_server_ciphers on;
 
+        lua_ssl_trusted_certificate "/home/github/tengcdn/conf/ssl/rootCA.pem";
         ssl_certificate /home/github/tengcdn/conf/ssl/test.crt;
         ssl_certificate_key /home/github/tengcdn/conf/ssl/test.key;
 
