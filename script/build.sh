@@ -39,6 +39,7 @@ buildNgx()
 	--without-mail_pop3_module \
 	--without-mail_imap_module \
 	--without-mail_smtp_module \
+	--with-openssl=/root/openssl-1.0.2g \
 	--with-pcre \
     --with-stream \
     --with-stream_ssl_module \
