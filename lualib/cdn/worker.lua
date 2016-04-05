@@ -37,6 +37,7 @@ local function file_exists(path)
 end
 
 function _M.rewrite()
+	if ngx_var.ups == "" then return end
 	local ups_key = hosts.get_ups_key(ngx_var.host)
 	local ups_value 
 

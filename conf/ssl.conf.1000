@@ -32,7 +32,7 @@ http {
         }
     }
     server {
-        listen 0.0.0.0:3129 ssl;
+        listen 443 ssl;
 
         server_name _;
 
@@ -54,7 +54,7 @@ http {
             local byte = string.byte
             local cert_path = ""
 
-            ssl.clear_certs()
+            
 
             -- Check for SNI request.
             if server_name == nil then
@@ -66,13 +66,13 @@ http {
             end 
             ngx.log(ngx.INFO, "server_name :", server_name)
             local key_data = nil;
-            local f = io.open(string.format("/home/github/tengcdn/conf/ssl/%s.key", server_name), "r")
+            local f = io.open(string.format("/home/github/tengcdn/conf/ssl/%s.der", server_name), "r")
             if f then
                 key_data = f:read("*a")
                 f:close()
             end
             local cert_data = nil;
-            local f = io.open(string.format("/home/github/tengcdn/conf/ssl/%s.crt", server_name), "r")
+            local f = io.open(string.format("/home/github/tengcdn/conf/ssl/%s.crt.der", server_name), "r")
             if f then
                 cert_data = f:read("*a")
                 f:close()
@@ -83,17 +83,12 @@ http {
                     ngx.log(ngx.ERR, "failed to set DER priv key: ", err)
                     return
                 end
-				cert_data, err = ssl.cert_pem_to_der(cert_data)
-				if not cert_data then
-				    ngx.log(ngx.ERR, "failed to convert pem cert to der cert: ", err)
-				    return
-				end
+
 				local ok, err = ssl.set_der_cert(cert_data)
 				if not ok then
 				    ngx.log(ngx.ERR, "failed to set DER cert: ", err)
 				    return
 				end
-                return
             end             
         }
 
