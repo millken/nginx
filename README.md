@@ -8,4 +8,5 @@ RESOURCE
 - https://github.com/hamishforbes/lua-resty-upstream
 - https://github.com/lloydzhou/lua-resty-cache
 - https://github.com/Veallym0n/dynamic-nginx-config-loader
+- https://github.com/alexazhou/VeryNginx
 
