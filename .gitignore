@@ -8,6 +8,7 @@
 
 # Shared objects (inc. Windows DLLs)
 *.dll
+*.tar.gz
 *.so.*
 *.dylib
 

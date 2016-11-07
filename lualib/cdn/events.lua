@@ -71,10 +71,14 @@ _M.states = {
 			end
 			for i=1, #res do
 				local s = res[i]
-				local setting = cmsgpack.pack(s.setting)
-				local success, err, forcible = settings:set(s.servername , setting)
-				if not success then 
-					log:error("events settings:set ", s.servername, err)
+				if s.servername == ngx.null then
+					log:error("id=", s.id, " servername error")
+				else
+					local setting = cmsgpack.pack(s.setting)
+					local success, err, forcible = settings:set(s.servername , setting)
+					if not success then 
+						log:error("events settings:set ", s.servername, err)
+					end
 				end
 			end
 			offset = offset + #res

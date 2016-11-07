@@ -62,7 +62,7 @@ buildReleaseNgx()
 	cd $NGINX
 	export LUAJIT_INC=/usr/local/include/luajit-2.1/
 	export LUAJIT_LIB=/usr/local/lib
-	./auto/configure --prefix=/nginx   \
+	./configure --prefix=/nginx   \
 	--with-http_ssl_module \
 	--without-http_fastcgi_module \
 	--without-http_uwsgi_module \
@@ -76,6 +76,7 @@ buildReleaseNgx()
 	--without-mail_pop3_module \
 	--without-mail_imap_module \
 	--without-mail_smtp_module \
+	--with-openssl=/root/openssl-1.0.2g \
 	--with-pcre \
     --with-stream \
     --with-stream_ssl_module \
@@ -84,7 +85,7 @@ buildReleaseNgx()
 	--add-module=../ngx_http_dyups_module \
 	--add-module=../lua-upstream-cache-nginx-module \
 	--add-module=../headers-more-nginx-module \
-	--with-ld-opt="-ltcmalloc_minimal -L/home/github/tengcdn/lualib -Wl,--whole-archive -lcdn -Wl,--no-whole-archive" \
+	--with-ld-opt="-L/home/github/tengcdn/lualib -Wl,--whole-archive -lcdn -Wl,--no-whole-archive" \
 	--with-cc-opt="-O2"
 sed -i 's#-L/usr/local/lib -lluajit-5.1#/usr/local/lib/libluajit-5.1.a#' objs/Makefile #静态编译
 sed -i 's#HTTP_AUX_FILTER_MODULES#HTTP_MODULES#' ../lua-upstream-cache-nginx-module/config #fix config
@@ -94,26 +95,10 @@ make
 
 buildTengine()
 {
-pushd $TENGINE
-./configure \
---without-http_fastcgi_module \
---without-http_uwsgi_module \
---without-http_scgi_module \
---without-select_module \
---without-poll_module \
---with-http_realip_module \
---with-http_concat_module=shared \
---with-http_sysguard_module=shared \
---with-http_limit_conn_module=shared \
---with-http_limit_req_module=shared \
---with-http_upstream_ip_hash_module=shared \
---with-http_upstream_least_conn_module=shared \
---with-http_upstream_session_sticky_module=shared \
---with-google_perftools_module \
---with-ld-opt='-ltcmalloc_minimal'
---with-debug \
+pushd $NGINX
+./configure  --prefix=/nginx \
 --with-cc-opt="-O0"
-make && make install;
+make;
 popd
 }
 
@@ -128,7 +113,7 @@ for f in $lualib/cdn/*.lua; do
 	r2="${BASH_REMATCH[2]}"
 	\cp $f $temp_dir/${r1}_${r2}.lua
 	echo $r1/$r2.lua;
-    luajit-2.1.0-beta1 -b $temp_dir/${r1}_${r2}.lua $temp_dir/${r1}_${r2}.o
+    luajit-2.1.0-beta2 -b $temp_dir/${r1}_${r2}.lua $temp_dir/${r1}_${r2}.o
 done
 rm -f $lualib/libcdn.a
 ar rcus $lualib/libcdn.a $temp_dir/*.o

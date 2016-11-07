@@ -23,7 +23,7 @@ _M.states = {
 		local cache_status = (ngx_var.upstream_cache_status or "")
 		local upsconf = config:get("upsconf")
 		local cache_time = 0
-		log:info("upsconf header: ", cjson.encode(upsconf), "cache: ", cache_status)
+		log:debug("[header.cache] host: ", ngx_var.host, ", setting: ", cjson.encode(upsconf), ", cache: ", cache_status)
 		if not upsconf or not upsconf["cache"] then return end
 		for _, r in ipairs(upsconf["cache"]) do
 			if r["url"] and str_find(ngx_var.uri, r["url"], 1, true) ~= nil then
