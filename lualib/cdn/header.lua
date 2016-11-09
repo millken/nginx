@@ -27,12 +27,21 @@ _M.states = {
 		if not upsconf or not upsconf["cache"] then return end
 		for _, r in ipairs(upsconf["cache"]) do
 			if r["url"] and str_find(ngx_var.uri, r["url"], 1, true) ~= nil then
-				cache_time = r["time"]
-			elseif r["file"] and str_find(r["file"], _M.get_file_ext(ngx_var.uri), 1, true) ~= nil then
-				cache_time = r["time"]
+				if r["disabled"] then
+					cache_time = 0
+					break
+				end
+				cache_time = r["time"] or 0
+			elseif r["file"] and str_find(r["file"] .. "|", _M.get_file_ext(ngx_var.uri) .. "|" , 1, true) ~= nil then
+				if r["disabled"] then
+					cache_time = 0
+					break
+				end			
+				cache_time = r["time"] or 0
 			end
 		end
-	    if cache_time > 0 and (cache_status == "MISS" or cache_status == "EXPIRED") then
+	    if (cache_time == 0 and cache_status == "HIT") or 
+		(cache_time > 0 and (cache_status == "MISS" or cache_status == "EXPIRED")) then
             local cache_data = http_cache.get_metadata()
             local new_expire = ngx.time() + cache_time 
 

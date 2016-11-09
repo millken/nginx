@@ -38,6 +38,7 @@ function _M.start(self, options)
 			while not ngx.worker.exiting() do
 				local utime = settings:get("event_last_utime")
 				if not utime then
+					settings:delete("localhost")
 					break
 				end
 				--utime = '2016-03-11 11:35:19.688017'

@@ -60,13 +60,18 @@ _M.states = {
 			log:info("last update time for event: ", res[1].max)
 		end
 		local ok, res = db:query_row("select max(id),count(id) from config.server")
-		if not ok then return end
+		if not ok then
+			log:error("[events.load_config] query max(id), count(id) error")
+			return 
+		end
+		log:debug("[events.load_config] max(id) = ", res.max ,", count(id) = ", res.count)
 		local offset = 0
 		local max_id = res.max
 		local limit = 2500
 		while offset <= res.count do
 			local ok, res = db:query("SELECT * FROM config.server where id<= " .. max_id .. " order by id asc limit " .. limit .. " offset " .. offset)
 			if not ok or #res == 0 then
+				log:alert("[events.load_config] failed to query server", res)
 				break
 			end
 			for i=1, #res do
@@ -74,7 +79,8 @@ _M.states = {
 				if s.servername == ngx.null then
 					log:error("id=", s.id, " servername error")
 				else
-					local setting = cmsgpack.pack(s.setting)
+					log:debug("load host: ", s.servername, s.setting)
+					local setting = cmsgpack.pack(cjson_decode(s.setting))
 					local success, err, forcible = settings:set(s.servername , setting)
 					if not success then 
 						log:error("events settings:set ", s.servername, err)
@@ -83,7 +89,7 @@ _M.states = {
 			end
 			offset = offset + #res
 			res = nil
-		end	
+		end
 		db:close()
 		local t2 = time.gettimeofday() - t1 
 		log:info("load config cost time : ", t2/1000, "ms")
@@ -91,7 +97,7 @@ _M.states = {
 
 	set_config = function(self, servername, setting)
 		if setting ~= ngx.null then
-			local setting = cmsgpack.pack(setting)
+			local setting = cmsgpack.pack(cjson_decode(setting))
 			local success, err, forcible = settings:set(servername , setting)
 			if not success then
 				log:error("set_config error : ", err)
@@ -105,7 +111,7 @@ _M.states = {
 		end
 		if #res >0 then
 			local r = res[1]
-			local setting = cmsgpack.pack(r.setting)
+			local setting = cmsgpack.pack(cjson_decode(r.setting))
 			local success, err, forcible = settings:set(servername , setting)
 			if not success then
 				log:error("set_config error : ", err)
@@ -117,12 +123,12 @@ _M.states = {
 	end,
 
 	delete_config = function(self, servername)
+		log:debug("delete host: ", servername)
+		hosts.delete_cache(servername)
 		local setting_json = settings:get(servername)
 		if setting_json == nil then
 			return false
 		end
-		hosts.delete_cache(servername)
-		settings:delete(servername)
 		local setting = cmsgpack.unpack(setting_json)
 		local k
 		for k, _ in pairs(setting) do
@@ -130,6 +136,7 @@ _M.states = {
 			dyups.delete(k)
 			upstream_cached:delete(k)
 		end
+		settings:delete(servername)
 		return true
 	end,
 

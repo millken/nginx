@@ -21,7 +21,7 @@ local _M = {
 function _M.get_config(host)
 	local key, value = nil, nil
 	local setting, err = _M.get_setting(host)
-	if setting == nil then
+	if setting == nil or type(setting) ~= "table" then
 		return key, value
 	end
 
@@ -52,7 +52,7 @@ function _M.get_setting(host)
 	end
 	local setting = lrucache:get(topleveldomain)
 	if setting ~= nil then
-		return setting
+		return setting, nil
 	end
 	local setting_json = settings:get(topleveldomain)
 	if setting_json == nil then

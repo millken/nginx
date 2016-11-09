@@ -81,7 +81,7 @@ if not hd_count then
 end
 
 
-log:info("ip total: ", req_iplist:get(ip_key), "(", ip_interval, "s)", 
+log:debug("ip total: ", req_iplist:get(ip_key), "(", ip_interval, "s)", 
 "req total: ", req_metrics:get(req_key), "(", req_interval, "s)",
 "http header total: ", req_metrics:get(hd_key), "(", hd_interval, "s)", ngx_time()
 )
